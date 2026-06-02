@@ -1,0 +1,712 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- THEME VARIABLES (MODERN ZINC ECOSYSTEM) --- */
+@layer base {
+  :root {
+    --bg-main: #09090b;
+    /* Zinc 950 */
+    --bg-surface: #09090b;
+    /* Zinc 950 */
+    --bg-secondary: #18181b;
+    /* Zinc 900 */
+    --bg-elevated: #27272a;
+    /* Zinc 800 */
+    --bg-hover: #1f1f23;
+    --border-main: #1f1f23;
+
+    --text-main: #e4e4e7;
+    /* Zinc 200 */
+    --text-muted: #a1a1aa;
+    /* Zinc 400 */
+    --text-faint: #8a8a93;
+    /* Zinc 400/500 Mix — HIER ANGEPASST: Heller als #71717a, dunkler als muted */
+
+    --primary: #6366f1;
+    /* Indigo 500 Actions */
+    --primary-hover: #4f46e5;
+    --primary-faint: rgba(99, 102, 241, 0.15);
+    --primary-subtle: rgba(99, 102, 241, 0.1);
+    --nav-indicator-opacity: 0;
+
+    /* RE-INTRODUCE PURPLE ACCENTS (Original Dark Look) */
+    --accent-purple: #a855f7;
+    /* Purple 500 */
+    --accent-purple-subtle: rgba(168, 85, 247, 0.1);
+    --accent-purple-border: rgba(168, 85, 247, 0.4);
+
+    /* Pinned & Accent */
+    --accent-pinned: #fbbf24;
+    --bg-pinned-gradient-start: rgba(251, 191, 36, 0.05);
+    --bg-pinned-gradient-end: transparent;
+
+    /* VARIABLE CHIPS (Restore NEON Green) */
+    --hl-variable-bg: rgba(74, 222, 128, 0.1);
+    --hl-variable-text: #4ade80;
+    /* Green 400 (Neon) */
+    --hl-variable-border: rgba(74, 222, 128, 0.2);
+
+    /* NEUTRAL INPUT FOCUS */
+    --input-focus-border: #a1a1aa;
+    /* Zinc 400 */
+    --input-focus-ring: rgba(161, 161, 170, 0.15);
+
+    /* SNIPPET CHIPS (Dark) */
+    --hl-snippet-bg: rgba(245, 158, 11, 0.1);
+    --hl-snippet-text: #fbbf24;
+    --hl-snippet-border: rgba(251, 191, 36, 0.2);
+
+    /* Semantic Brand Colors (Dark) */
+    --snippet-accent: #fbbf24;
+    --snippet-bg-subtle: rgba(251, 191, 36, 0.1);
+    --prompt-accent: #f59e0b;
+    --prompt-bg-subtle: rgba(245, 158, 11, 0.1);
+
+    /* Contextual Selection (Dark) - Balanced Purple (Middle ground for visibility) */
+    --selection-bg: rgba(168, 85, 247, 0.4); /* increased from 0.25 for better contrast */
+    --selection-border: rgba(168, 85, 247, 0.5);
+
+    /* HINT WIDGETS (Linter) */
+    --hint-bg: #27272a;
+    --hint-text: #a1a1aa;
+    --hint-hover-bg: #3f3f46;
+
+    /* --- SYNTAX HIGHLIGHTING THEME (Dark Mode) --- */
+    --hl-heading: #d2a8ff; /* Originales Soft-Lavender/Pink aus deinem Screenshot */
+    --hl-link: #38bdf8;    /* Sky 400 */
+    --hl-url: #71717a;     /* Zinc 500 */
+    --hl-quote: #a1a1aa;   /* Zinc 400 */
+    /* Elite IDE Elemente */
+    --hl-xml-tag: #f87171; /* Red 400 - Für <system> Tags (Claude Style) */
+    --hl-xml-attr: #fdba74; /* Amber 400 - Für Attribute in Tags */
+    --hl-code: #93c5fd;    /* Sky 300 - Für Fließtext in Code-Blöcken */
+    --hl-hr: #52525b;      /* Zinc 600 - Für --- Trennlinien */
+  }
+
+  /* SOFT FOCUS Palette (Light Mode) */
+  :root.light {
+    --bg-main: #F9FAFB;
+    --bg-surface: #FFFFFF;
+    --bg-secondary: #F3F4F6;
+    --bg-elevated: #FFFFFF;
+    --bg-hover: #F3F4F6;
+
+    --border-main: #E5E7EB;
+    --border-subtle: #E5E7EB;
+    --border-focus: #6366F1;
+
+    --text-main: #111827;
+    --text-muted: #4B5563;
+    --text-faint: #9CA3AF;
+
+    --primary: #6366F1;
+    --primary-hover: #4F46E5;
+    --primary-faint: #EEF2FF;
+    --primary-subtle: #EEF2FF;
+
+    --accent-pinned: #D97706;
+    --nav-indicator-opacity: 1;
+
+    /* Semantic Brand Colors (Light) */
+    --snippet-accent: #D97706;
+    --snippet-bg-subtle: #FFFBEB;
+    --prompt-accent: #F97316;
+    --prompt-bg-subtle: #FFF7ED;
+    --code-bg: #F8FAFC;
+
+    /* Contextual Selection (Light) - Matches Historical Blue Screenshot */
+    --selection-bg: #BFDBFE; /* Blue 200 - more visible selection */
+    --selection-border: #3B82F6; /* Blue 500 */
+
+    /* VARIABLE CHIPS (Light) */
+    --hl-variable-bg: #ecfdf5;
+    --hl-variable-text: #059669;
+    --hl-variable-border: #d1fae5;
+
+    /* SNIPPET CHIPS (Light) */
+    --hl-snippet-bg: #fffbeb;
+    --hl-snippet-text: #b45309;
+    --hl-snippet-border: #fef3c7;
+    --bg-pinned-gradient-start: rgba(217, 119, 6, 0.08);
+    /* Amber-700 subtle */
+    --bg-pinned-gradient-end: transparent;
+
+    /* --- SYNTAX HIGHLIGHTING THEME (Light Mode) --- */
+    --hl-heading: #8250df; /* Abgedunkeltes Lavender/Purple für perfekten Kontrast auf Weiß */
+    --hl-link: #0284c7;    /* Sky 600 */
+    --hl-url: #9ca3af;     /* Zinc 400 */
+    --hl-quote: #4b5563;   /* Zinc 600 */
+    /* Elite IDE Elemente */
+    --hl-xml-tag: #e11d48; /* Red 600 */
+    --hl-xml-attr: #d97706; /* Amber 600 */
+    --hl-code: #0369a1;    /* Sky 700 */
+    --hl-hr: #9ca3af;      /* Zinc 400 */
+  }
+
+  html,
+  body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden !important; /* THE ULTIMATE LOCK: Verhindert den Phantom-Scroll */
+    overscroll-behavior: none !important; /* Blockiert Scroll-Chaining und Bounce-Effekte */
+    background-color: #09090b;
+    /* Zwingt Dark Mode Background überall */
+  }
+}
+
+body {
+  @apply bg-[var(--bg-main)] text-[var(--text-main)];
+}
+
+/* --- GLOBAL SELECTION --- */
+::selection {
+  background-color: var(--selection-bg);
+}
+
+/* Specific focus for CodeMirror content selection (Don't force background if drawSelection is nested) */
+.cm-content ::selection {
+  background-color: transparent !important;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #52525b; /* Zinc 600 - High contrast for Dark Mode */
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #71717a; /* Zinc 500 - Lighter on hover */
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  /* Zinc 300 - Higher contrast for Light Mode */
+}
+
+.light ::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+  /* Zinc 400 */
+}
+
+/* --- CORE COMPONENT STYLES --- */
+.bg-bg {
+  background-color: var(--bg-main);
+}
+
+.bg-bg-surface {
+  background-color: var(--bg-surface);
+}
+
+.bg-bg-secondary {
+  background-color: var(--bg-secondary);
+}
+
+.bg-bg-elevated {
+  background-color: var(--bg-elevated);
+}
+
+.bg-bg-hover {
+  background-color: var(--bg-hover);
+}
+
+.border-border {
+  border-color: var(--border-main);
+}
+
+.text-text-main {
+  color: var(--text-main);
+}
+
+.text-text-muted {
+  color: var(--text-muted);
+}
+
+.text-text-faint {
+  color: var(--text-faint);
+}
+
+/* --- FOOTER & SIDEBAR LINKS --- */
+.footer-link {
+  @apply text-text-muted transition-colors duration-200;
+}
+
+.footer-link:hover {
+  @apply text-text-main bg-bg-hover;
+}
+
+/* --- PINNED ITEM STYLE --- */
+.pinned-item {
+  border-left: 3px solid var(--accent-pinned) !important;
+  background-image: linear-gradient(90deg, var(--bg-pinned-gradient-start) 0%, var(--bg-pinned-gradient-end) 100%);
+}
+
+/* --- POPUP SPECIFIC PINNED ITEM --- */
+.popup-pinned-item {
+  border-left: 3px solid var(--primary) !important;
+}
+
+/* --- KNOWLEDGE BASE SPECIFIC PINNED STYLE --- */
+.kb-pinned-item {
+  border-left: 4px solid var(--accent-pinned) !important;
+  background-image: linear-gradient(135deg, var(--bg-pinned-gradient-start) 0%, var(--bg-pinned-gradient-end) 100%);
+  backdrop-filter: blur(8px);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 15px -5px rgba(251, 191, 36, 0.15);
+}
+
+.kb-pinned-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg-pinned-gradient-start);
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+/* --- INTERACTIVE CHIPS: VARIABLES & SNIPPETS --- */
+/* SIMPLIFIED VARIABLE STYLE (Native Text Look - Zero Shift) */
+.cm-variable,
+.cm-variable-active {
+  background-color: var(--hl-variable-bg);
+  color: var(--hl-variable-text) !important;
+  border: none;
+  border-radius: 2px;
+  /* ZERO padding/margin guarantees NO layout shift vs plain text */
+  padding: 0;
+  margin: 0;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.cm-variable:hover,
+.cm-variable-active:hover {
+  background-color: var(--hl-variable-bg);
+  text-decoration: underline;
+  /* Removed glow/transform per user request ("cheap") */
+}
+
+/* SIMPLIFIED SNIPPET STYLE (Native Text Look - Zero Shift) */
+.cm-snippet,
+.cm-snippet-active {
+  background-color: var(--hl-snippet-bg);
+  color: var(--hl-snippet-text) !important;
+  border: none;
+  border-radius: 2px;
+  padding: 0;
+  margin: 0;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.cm-snippet:hover,
+.cm-snippet-active:hover {
+  background-color: var(--hl-snippet-bg);
+  text-decoration: underline;
+}
+
+/* --- INLINE SYNTAX WIDGETS --- */
+.cm-syntax-hint-wrapper {
+  margin-left: 6px;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.cm-syntax-hint-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--bg-surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border-main);
+  padding: 2px 6px;
+  border-radius: 12px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.cm-syntax-hint-pill:hover {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
+}
+
+.cm-syntax-hint-pill svg {
+  opacity: 0.7;
+}
+
+/* --- KNOWLEDGE BASE / GUIDE TILES (Moved to JSX for granular control) --- */
+
+/* --- SCROLL TRAPPING & ANIMATIONS --- */
+.step-scroll-locked {
+  overflow-y: hidden !important;
+  pointer-events: none;
+  opacity: 0.8;
+  filter: grayscale(0.2);
+}
+
+.step-scroll-active {
+  overflow-y: auto !important;
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* No Scrollbar Utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* --- TOGGLE UI UTILITIES --- */
+.toggle-track-off {
+  background-color: rgba(0, 0, 0, 0.08) !important;
+  border-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.dark .toggle-track-off {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* MARKDOWN FALLBACK STYLES */
+.prose {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.prose table {
+  word-break: normal;
+  overflow-wrap: normal;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.prose td, .prose th {
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.prose h1 {
+  @apply text-2xl font-bold mb-4 mt-6 text-text-main;
+}
+
+.prose h2 {
+  @apply text-xl font-bold mb-3 mt-5 text-text-main;
+}
+
+.prose h3 {
+  @apply text-lg font-bold mb-2 mt-4 text-text-main;
+}
+
+.prose p {
+  @apply mb-4 leading-7 text-text-muted;
+}
+
+.prose ul {
+  @apply list-disc list-outside ml-5 mb-4 space-y-1;
+}
+
+.prose ol {
+  @apply list-decimal list-outside ml-5 mb-4 space-y-1;
+}
+
+.prose li {
+  @apply text-text-muted;
+}
+
+.prose code {
+  @apply bg-bg-elevated text-primary px-1.5 py-0.5 rounded font-mono text-sm;
+}
+
+.prose pre {
+  @apply bg-bg-elevated p-4 rounded-lg overflow-x-auto mb-4 border border-border;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-primary pl-4 italic text-text-muted my-4;
+}
+
+.prose strong {
+  @apply text-text-main font-bold;
+}
+
+.prose a {
+  @apply text-primary hover:underline;
+}
+
+/* --- THEME SWITCH UTILITY (Instant Snap) --- */
+.theme-switching,
+.theme-switching * {
+  transition: none !important;
+}
+
+/* Styling für das CodeMirror Autocomplete Popup */
+.cm-tooltip-autocomplete {
+  border: 1px solid var(--border-main) !important;
+  border-radius: 12px !important;
+  background-color: var(--bg-secondary) !important;
+  /* Deutlicherer Kontrast zum Editor */
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  padding: 4px !important;
+  overflow: hidden;
+  z-index: 99999 !important; /* Fix: Prevent cutoff inside modals/overflow */
+}
+
+.cm-tooltip-autocomplete>ul>li {
+  border-radius: 6px !important;
+  padding: 6px 10px !important;
+  margin-bottom: 2px;
+  font-family: var(--font-sans) !important;
+  /* Weg vom reinen Code-Look */
+  font-size: 13px !important;
+  color: var(--text-main) !important;
+  /* Standard weiße Textfarbe */
+  transition: background-color 0.1s;
+}
+
+/* Der Hover/Active State und Mouse-Hover */
+.cm-tooltip-autocomplete>ul>li[aria-selected],
+.cm-tooltip-autocomplete>ul>li:hover {
+  background-color: var(--bg-elevated) !important;
+  /* Deutlicher als --bg-hover */
+  color: var(--text-main) !important;
+  cursor: pointer;
+}
+
+/* Fix strange pixels (skip-ink underline) around curly brackets */
+/* und immer das Gematchte blau markieren (nicht die ganze Zeile) */
+.cm-tooltip-autocomplete>ul>li .cm-completionMatchedText {
+  text-decoration: none !important;
+  font-weight: 800 !important;
+  color: var(--primary) !important;
+}
+
+/* Sub-Text (z.B. "File Dropzone variable") diskret stilisieren */
+.cm-tooltip-autocomplete>ul>li .cm-completionDetail {
+  color: var(--text-muted) !important;
+  font-style: italic;
+  margin-left: 8px;
+}
+
+/* --- UNIFIED MODAL SYSTEM (Premium Dark Mode Elevation) --- */
+@layer components {
+  /* --- EXCLUSIVE DARK-MODE ELEVATION (ZERO REGRESSION) --- */
+  /* These classes ONLY apply when the .dark class is present on the HTML root */
+  /* @PROTECTED_REGION START: Dark Mode Modal Architecture */
+  /* CRITICAL: Governs the elevated Zinc-900 surface and high-contrast secondary tokens */
+  .dark .dm-modal {
+    background-color: rgba(24, 24, 27, 0.95) !important; /* Zinc 900 translucent: Matches Feedback Modal exactly */
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+    /* OVERRIDE VARS JUST FOR THIS CONTEXT */
+    --bg-surface: #18181b; 
+    --bg-secondary: #27272a; /* Zinc 800: Contrast for toggles and tracks */
+    --bg-elevated: #27272a;
+    --bg-hover: #3f3f46; /* Zinc 700: Distinct interactive state */
+  }
+  /* @PROTECTED_REGION END: Dark Mode Modal Architecture */
+
+  .dark .dm-dropdown {
+    background-color: rgba(24, 24, 27, 0.95) !important; /* Zinc 900 translucent: Unified with Modals */
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+    /* OVERRIDE VARS JUST FOR THIS CONTEXT */
+    --bg-surface: #18181b; 
+    --bg-elevated: #27272a;
+  }
+
+  .modal-backdrop {
+    @apply fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300;
+  }
+
+  /* Dark mode (default root) */
+  .modal-glass-panel {
+    @apply backdrop-blur-2xl;
+    background-color: rgba(24, 24, 27, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow:
+      0 25px 50px -12px rgba(0, 0, 0, 0.85),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  /* Light mode override */
+  :root.light .modal-glass-panel {
+    background-color: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow:
+      0 25px 50px -12px rgba(0, 0, 0, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 1);
+  }
+}
+
+/* --- CODEMIRROR SEARCH PANEL (Premium LeanPrompts Styling) --- */
+.cm-panel.cm-search {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-muted) !important;
+  border-top: 1px solid var(--border-main) !important;
+  border-bottom: none !important;
+  padding: 14px 16px !important;
+  font-family: var(--font-sans) !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 12px 8px !important;
+  align-items: center !important;
+  position: relative !important; /* WICHTIG: Erlaubt absolute Positionierung des X-Buttons */
+  padding-right: 48px !important; /* Platz für den X-Button lassen */
+}
+
+/* Die Such- und Ersetzen-Textfelder */
+.cm-panel.cm-search input.cm-textfield {
+  all: unset !important;
+  background-color: var(--bg-elevated) !important;
+  border: 1px solid var(--border-main) !important;
+  border-radius: 8px !important; /* Passend zu Tailwind rounded-lg */
+  padding: 6px 12px !important;
+  color: var(--text-main) !important;
+  font-size: 12px !important;
+  font-family: var(--font-mono, monospace) !important;
+  transition: all 0.2s ease !important;
+  width: 160px !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05) !important; /* Zarte Tiefe */
+}
+
+.cm-panel.cm-search input.cm-textfield:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 1px var(--primary-subtle) !important;
+}
+
+/* Die Aktions-Buttons (Next, All, Replace) */
+.cm-panel.cm-search button.cm-button {
+  all: unset !important;
+  background-color: var(--bg-elevated) !important;
+  border: 1px solid var(--border-main) !important;
+  color: var(--text-muted) !important;
+  border-radius: 8px !important;
+  padding: 6px 12px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: capitalize !important; /* Macht aus "next" -> "Next" */
+  line-height: 1 !important; /* Garantiert vertikale Zentrierung */
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.cm-panel.cm-search button.cm-button:hover {
+  color: var(--text-main) !important;
+  background-color: var(--bg-hover) !important;
+  border-color: var(--text-muted) !important; /* Sichtbarerer Hover-Border */
+}
+
+.cm-panel.cm-search button.cm-button:active {
+  transform: scale(0.96) !important; /* Knackiges Klick-Feedback */
+}
+
+/* Der (X) Schließen-Button - ABSOLUT POSITIONIERT */
+.cm-panel.cm-search button[name="close"] {
+  all: unset !important;
+  position: absolute !important;
+  top: 12px !important;
+  right: 12px !important;
+  cursor: pointer !important;
+  color: var(--text-faint) !important;
+  font-size: 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 6px !important;
+  line-height: 1 !important;
+  transition: all 0.2s ease !important;
+}
+
+.cm-panel.cm-search button[name="close"]:hover {
+  color: #ef4444 !important; /* Rotes X beim Hovern */
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Checkboxen und Labels (Match Case etc.) */
+.cm-panel.cm-search label {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: var(--text-muted) !important;
+  cursor: pointer !important;
+  margin-left: 4px !important;
+  margin-right: 8px !important;
+  user-select: none !important;
+}
+
+.cm-panel.cm-search label:hover {
+  color: var(--text-main) !important;
+}
+
+.cm-panel.cm-search input[type="checkbox"] {
+  appearance: auto !important;
+  accent-color: var(--primary) !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+/* --- CODEMIRROR PLACEHOLDER --- */
+.cm-placeholder {
+  color: var(--text-faint) !important;
+  font-style: italic;
+}

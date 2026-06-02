@@ -1,0 +1,37 @@
+/**
+ * ============================================================================
+ * LeanPrompts Studio
+ * @author       Ivica Vrgoc
+ * @link         https://github.com/IvicaV/LeanPrompts
+ * @copyright    Copyright (c) 2025-present Ivica Vrgoc. All rights reserved.
+ * @license      AGPL-3.0
+ * ============================================================================
+ * This file is part of LeanPrompts Studio.
+ * 
+ * LeanPrompts Studio is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ * ============================================================================
+ */
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import Dashboard from './Dashboard'
+import '../../styles/globals.css'
+import { initTheme } from '../../utils/themeInit'
+import { requestStoragePersistence } from '../../utils/storagePersistence'
+
+// Initialize Theme immediately before React mounts to prevent flash
+initTheme();
+requestStoragePersistence();
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <Dashboard />
+  </React.StrictMode>,
+)

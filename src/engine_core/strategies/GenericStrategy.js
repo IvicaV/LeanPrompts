@@ -1,0 +1,39 @@
+/**
+ * ============================================================================
+ * LeanPrompts Studio
+ * @author       Ivica Vrgoc
+ * @link         https://github.com/IvicaV/LeanPrompts
+ * @copyright    Copyright (c) 2025-present Ivica Vrgoc. All rights reserved.
+ * @license      AGPL-3.0
+ * ============================================================================
+ * This file is part of LeanPrompts Studio.
+ * 
+ * LeanPrompts Studio is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ * ============================================================================
+ */
+import { AbstractBaseStrategy } from './AbstractBaseStrategy.js';
+
+/**
+ * Fallback Strategy: The "Generic Soldier".
+ * Uses heuristics to work on any unknown site.
+ */
+export class GenericStrategy extends AbstractBaseStrategy {
+    constructor() {
+        super('Generic', []);
+    }
+
+    /**
+     * Always returns true for compatibility check if kown strategies fail.
+     */
+    detect(url) {
+        return true;
+    }
+}

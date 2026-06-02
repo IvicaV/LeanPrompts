@@ -1,0 +1,44 @@
+/* Global Cursor Override for Selection Mode */
+body.lp-selection-mode,
+body.lp-selection-mode * {
+    cursor: crosshair !important;
+}
+
+/* High-Visibility Border for Selection Mode */
+body.lp-selection-mode {
+    position: relative;
+    /* Use pseudo-element to avoid layout shifts */
+}
+
+body.lp-selection-mode::after {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 4px solid #3b82f6;
+    /* Blue-500 */
+    background: rgba(59, 130, 246, 0.05);
+    /* Very subtle tint */
+    z-index: 2147483647;
+    pointer-events: none;
+    box-shadow: inset 0 0 20px rgba(59, 130, 246, 0.2);
+    animation: lp-fade-in 0.3s ease-out;
+}
+
+@keyframes lp-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* Optional: Highlight hover effect matching the logic in main.js */
+body.lp-selection-mode *:hover {
+    outline: 2px solid #3b82f6 !important;
+    outline-offset: 2px;
+}
