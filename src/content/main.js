@@ -143,7 +143,7 @@ function showStatus(message, isError = false, duration = 3000, showSpinner = fal
 // Update Icon based on State (Abwärtskompatibel)
   let iconMarkup = '';
   if (showSpinner) {
-    iconMarkup = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2C6.47715 2 2 6.47715 2 12" stroke-opacity="1"></path></svg>`;
+    iconMarkup = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2C6.47715 2 2 6.47715 2 12" stroke-opacity="1"></path></svg>`;
   } else {
     iconMarkup = (isError === true || isError === 'error')
       ? `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`
@@ -169,12 +169,17 @@ function showStatus(message, isError = false, duration = 3000, showSpinner = fal
         svgInserted = true;
       }
     } catch (e) {
-      console.warn("LeanPrompts: Parser fallback triggered for status icon.");
+      // Quiet fallback to prevent filling the chrome://extensions developer dashboard
     }
   }
 
   if (!svgInserted) {
-    el.insertAdjacentHTML('afterbegin', iconMarkup);
+    try {
+      el.insertAdjacentHTML('afterbegin', iconMarkup);
+    } catch (insertAdjacentError) {
+      // Quiet fallback for strict CSP / Trusted Types environments (e.g. Claude.ai)
+      // The status text is still displayed correctly, only the SVG icon is omitted.
+    }
   }
 
   // Create the text node purely via DOM API to guarantee zero XSS execution,
