@@ -113,6 +113,8 @@ export default defineConfig({
     },
   },
   build: {
+    sourcemap: false, // Keine Sourcemaps im Store-Build (erhöht Sicherheit und Datenschutz)
+    minify: 'esbuild', // Standard-Minifizierung von Vite (CWS-konform, keine riskante Obfuszierung)
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: {
