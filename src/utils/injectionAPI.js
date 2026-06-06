@@ -67,7 +67,8 @@ export const triggerInjection = (payload, callback) => {
         chrome.runtime.sendMessage(message, async (response) => {
             // Trap the inevitable "Channel closed" error if background is busy renaming
             if (chrome.runtime.lastError) {
-                console.warn(`InjectionAPI: Runtime connection issue: ${chrome.runtime.lastError.message || "Unknown error"}`);
+                // Muted console.warn to console.log to prevent polluting the chrome://extensions error dashboard
+                console.log(`InjectionAPI: Connection closed: ${chrome.runtime.lastError.message || "Unknown error"}`);
                 if (callback) callback({ success: false, error: "CONNECTION_ERROR" });
                 return;
             }
