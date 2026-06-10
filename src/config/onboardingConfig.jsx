@@ -83,8 +83,8 @@ export const DASHBOARD_TOUR_STEPS = [
     icon: <Check size={20} className="text-emerald-500" />
   },
   {
-    title: "⚠️ Crucial: 100% Local Storage",
-    content: "Your data never touches a cloud. It lives ONLY in your browser. If you clear your browser's site data or cache, your prompts WILL BE DELETED. You must export backups regularly.",
+    title: "⚠️ Data Sovereignty: 100% Local",
+    content: "LeanPrompts stores your entire library in a secure, offline database inside your browser. No cloud, no tracking, absolute privacy. Please note: Uninstalling the extension or resetting your browser profile will erase this local database. Establish a professional routine and export backups regularly in Settings.",
     icon: <AlertTriangle size={20} className="text-red-500" />
   }
 ];
