@@ -251,7 +251,7 @@ I built LeanPrompts for speed. Keep your hands on the keyboard. *(Configure glob
 
 ### Option 1: Chrome Web Store (Recommended)
 Download directly from the official store for automatic updates.  
-👉 **[Install from Chrome Web Store](#)** *(Link pending)*
+👉 **[Install from Chrome Web Store](https://chromewebstore.google.com/detail/leanprompts-studio/pbdbopolbilaemiphldmecmlppedajnd)**
 
 ### Option 2: Local Developer Install
 If you want to review the code or run it locally:
