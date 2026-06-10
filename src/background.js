@@ -1352,16 +1352,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               let fallbackTimer;
 
               const proceedWithInjection = async () => {
+                // Synchroner Guard gegen doppelte parallele Ausführungen
                 if (isResolved) return;
-                isResolved = true;
-                chrome.tabs.onUpdated.removeListener(listener);
-                clearTimeout(fallbackTimer);
 
                 try {
-                  // ZERO-REGRESSION FIX: SPA Hydration Buffer
+                  // SPA-Hydrierungs-Puffer abwarten
                   await new Promise(r => setTimeout(r, 800));
 
-                  await waitForContentScript(tab.id);
+                  // Aktiven Handshake mit dem Content-Script versuchen
+                  const isReady = await waitForContentScript(tab.id, 3000);
+                  if (!isReady) {
+                    // Falls das Script nicht antwortet (z.B. wegen Redirect im Gange),
+                    // brechen wir diesen Versuch ab, lassen den Listener aber aktiv für das nächste Event.
+                    return;
+                  }
+
+                  // Verbindung erfolgreich etabliert. Jetzt aufräumen und injizieren.
+                  isResolved = true;
+                  chrome.tabs.onUpdated.removeListener(listener);
+                  clearTimeout(fallbackTimer);
+
                   if (!text && (!files || files.length === 0)) {
                     sendResponse({ success: true, status: "opened" });
                   } else {
@@ -1369,20 +1379,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     sendResponse(result);
                   }
                 } catch (err) {
+                  // Fehler-Sicherung: Ressourcen freigeben
+                  isResolved = true;
+                  chrome.tabs.onUpdated.removeListener(listener);
+                  clearTimeout(fallbackTimer);
                   console.error("LeanPrompts: proceedWithInjection for new tab failed", err);
-                  sendResponse({ success: false, error: "Injection failed after tab creation: " + err.message });
+                  sendResponse({ success: false, error: "Injection failed: " + err.message });
                 }
               };
 
               const listener = (tabId, changeInfo) => {
+                // Reagiert auf 'complete' (auch nach Weiterleitungen)
                 if (tabId === tab.id && changeInfo.status === 'complete') {
                   proceedWithInjection();
                 }
               };
               
               chrome.tabs.onUpdated.addListener(listener);
-              // ZERO-REGRESSION FIX: Entschärft auf 12s, um Phantom-PONGs zu vermeiden.
-              fallbackTimer = setTimeout(proceedWithInjection, 12000);
+              // Ultimative Absicherung: Beendet den Kanal nach 12s, falls die Seite gar nicht lädt
+              fallbackTimer = setTimeout(() => {
+                if (!isResolved) {
+                  isResolved = true;
+                  chrome.tabs.onUpdated.removeListener(listener);
+                  sendResponse({ success: false, error: "Injection timed out during page load." });
+                }
+              }, 12000);
             }
           }
         } catch (e) {
