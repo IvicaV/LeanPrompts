@@ -5,7 +5,7 @@ import { crx, defineManifest } from '@crxjs/vite-plugin'
 const manifest = defineManifest({
   manifest_version: 3,
   name: "LeanPrompts Studio",
-  version: "1.0.0",
+  version: "1.0.1",
   author: "Ivica Vrgoc",
   description: "Professional, local-first development environment for AI prompts.",
   permissions: [
