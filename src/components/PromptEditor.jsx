@@ -68,7 +68,7 @@ const leanLanguageExt = {
         }
         // -----------------------------------------------------
         const rest = cx.slice(pos + 1, cx.end);
-        const match = /^([\w.-]+|\{[^}]+\})/.exec(rest);
+        const match = /^([\w-]+(?:\.[\w-]+)*|\{[^}]+\})/.exec(rest);
         if (match) {
           return cx.addElement(cx.elt("Snippet", pos, pos + 1 + match[0].length));
         }
@@ -391,7 +391,7 @@ const promptIDEPlugin = ViewPlugin.fromClass(class {
     const availableSnippets = view.state.facet(snippetsFacet);
 
     const varRegex = /\{\{([\s\S]+?)\}\}/g;
-    const snipRegex = /(?<![a-zA-Z0-9_.+\-])(?:@[\w.-]+|@\{[^}]+\})/g;
+    const snipRegex = /(?<![a-zA-Z0-9_.+\-])(?:@[\w-]+(?:\.[\w-]+)*|@\{[^}]+\})/g;
     
     // =========================================================================
     // [PROTECTED: ZERO-REGRESSION PERFORMANCE — CACHED LITERAL RANGES]
@@ -484,7 +484,7 @@ const promptIDEPlugin = ViewPlugin.fromClass(class {
         const raw = sMatch[0];
 
         // Extract name to check existence
-        const nameMatch = /^@(?:\{([^{}]+)\}|([\w.-]+))/.exec(raw);
+        const nameMatch = /^@(?:\{([^{}]+)\}|([\w-]+(?:\.[\w-]+)*))/.exec(raw);
         const snipName = nameMatch ? (nameMatch[1] || nameMatch[2]) : raw.substring(1);
 
         const exists = availableSnippets.some(s => s.name === snipName);
@@ -696,7 +696,7 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
       const snipEl = target.closest('.cm-snippet');
       if (snipEl) {
         const raw = snipEl.innerText;
-        const match = /^@(?:\{([^{}]+)\}|([\w.-]+))/.exec(raw);
+        const match = /^@(?:\{([^{}]+)\}|([\w-]+(?:\.[\w-]+)*))/.exec(raw);
         const snipName = match ? (match[1] || match[2]) : raw.substring(1);
         if (snipName) window.dispatchEvent(new CustomEvent('lp-focus-snippet', { detail: { name: snipName } }));
       }
@@ -771,7 +771,7 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
 
   const snippetCompletions = (context) => {
     // Erkennt das '@' und alles, was danach getippt wird
-    let word = context.matchBefore(/(?<![a-zA-Z0-9_.+\-])@[\w.-]*/);
+    let word = context.matchBefore(/(?<![a-zA-Z0-9_.+\-])@[\w-]*(?:\.[\w-]+)*/);
     if (!word) return null;
     if (word.from === word.to && !context.explicit) return null;
 
@@ -994,13 +994,13 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
       if (!text.includes('@')) return null;
 
       // Match @name or @{name with spaces}
-      const snipRegex = /(?<![a-zA-Z0-9_.+\-])(?:@[\w.-]+|@\{[^}]+\})/g;
+      const snipRegex = /(?<![a-zA-Z0-9_.+\-])(?:@[\w-]+(?:\.[\w-]+)*|@\{[^}]+\})/g;
 
       let match;
       while ((match = snipRegex.exec(text)) !== null) {
         if (relPos >= match.index && relPos < match.index + match[0].length) {
           const raw = match[0];
-          const nameMatch = /^@(?:\{([^{}]+)\}|([\w.-]+))/.exec(raw);
+          const nameMatch = /^@(?:\{([^{}]+)\}|([\w-]+(?:\.[\w-]+)*))/.exec(raw);
           const snipName = nameMatch ? (nameMatch[1] || nameMatch[2]) : raw.substring(1);
           const found = snippets.find(s => s.name === snipName);
 

@@ -438,8 +438,8 @@ export const resolveSnippets = (text, allSnippets, depth = 0) => {
   const ignored = getIgnoredRanges(text);
   const isIgnored = (pos) => ignored.some(r => pos >= r.from && pos <= r.to);
 
-  // Regex: Matches @Name OR @{Name}
-  return text.replace(/(?<![a-zA-Z0-9_.+\-])@(?:\{([^{}]+)\}|([\w.-]+))/g, (match, nameInBrackets, nameSimple, offset) => {
+  // Regex: Matches @Name OR @{Name} (Lookbehind schützt E-Mail-Adressen, kein gieriges Punkt-Matching)
+  return text.replace(/(?<![a-zA-Z0-9_.+\-])@(?:\{([^{}]+)\}|([\w-]+(?:\.[\w-]+)*))/g, (match, nameInBrackets, nameSimple, offset) => {
     if (isIgnored(offset)) return match;
     const cleanName = (nameInBrackets || nameSimple || "").trim();
 

@@ -105,8 +105,8 @@ export default function NoteEditor({
       return snippet ? `@#${snippet.id}` : match;
     });
 
-    // @name -> @#ID (Lookbehind schützt E-Mail-Adressen)
-    result = result.replace(/(?<![a-zA-Z0-9_.+\-])@(?!#)(?!\{)([^\s\[\]{}]+)/g, (match, name) => {
+    // @name -> @#ID (Lookbehind schützt E-Mail-Adressen, kein gieriges Punkt-Matching)
+    result = result.replace(/(?<![a-zA-Z0-9_.+\-])@(?!#)(?!\{)([\w-]+(?:\.[\w-]+)*)/g, (match, name) => {
       const snippet = snippets.find(s => s.name === name);
       return snippet ? `@#${snippet.id}` : match;
     });
@@ -213,7 +213,7 @@ export default function NoteEditor({
 
   // Bug 2: Detect if cursor is inside an existing complete link
   const isInsideExistingLink = useCallback((text, cursorPos) => {
-    const linkRegex = /\[\[[^\]]+\]\]|(?<![a-zA-Z0-9_.+\-])@\{[^\}]+\}|(?<![a-zA-Z0-9_.+\-])@[^\s\[\]{}]+/g;
+    const linkRegex = /\[\[[^\]]+\]\]|(?<![a-zA-Z0-9_.+\-])@\{[^\}]+\}|(?<![a-zA-Z0-9_.+\-])@([\w-]+(?:\.[\w-]+)*)/g;
     let match;
     while ((match = linkRegex.exec(text)) !== null) {
       // Include cursor at start position (>=) to catch editing at the opening [[
@@ -226,7 +226,7 @@ export default function NoteEditor({
 
   // Bug 2: Find the start index of the link containing the cursor
   const findLinkStart = useCallback((text, cursorPos) => {
-    const linkRegex = /\[\[[^\]]+\]\]|(?<![a-zA-Z0-9_.+\-])@\{[^\}]+\}|(?<![a-zA-Z0-9_.+\-])@[^\s\[\]{}]+/g;
+    const linkRegex = /\[\[[^\]]+\]\]|(?<![a-zA-Z0-9_.+\-])@\{[^\}]+\}|(?<![a-zA-Z0-9_.+\-])@([\w-]+(?:\.[\w-]+)*)/g;
     let match;
     while ((match = linkRegex.exec(text)) !== null) {
       if (cursorPos >= match.index && cursorPos <= match.index + match[0].length) {
@@ -384,8 +384,8 @@ export default function NoteEditor({
 
     const parts = [];
     let lastIndex = 0;
-    // Extended regex: inline code + internal links + @{...} + URLs (https?://...) (Lookbehind schützt E-Mail-Adressen)
-    const linkRegex = /`([^`\n]+)`|\[\[kb:([^\]]+)\]\]|\[\[([^\]]+)\]\]|(?<![a-zA-Z0-9_.+\-])@\{([^\}]+)\}|(?<![a-zA-Z0-9_.+\-])@([^\s\[\]{}]+)|(https?:\/\/[^\s<>"\)]+)/g;
+    // Extended regex: inline code + internal links + @{...} + URLs (https?://...) (Lookbehind schützt E-Mail-Adressen, kein gieriges Punkt-Matching)
+    const linkRegex = /`([^`\n]+)`|\[\[kb:([^\]]+)\]\]|\[\[([^\]]+)\]\]|(?<![a-zA-Z0-9_.+\-])@\{([^\}]+)\}|(?<![a-zA-Z0-9_.+\-])@([\w-]+(?:\.[\w-]+)*)|(https?:\/\/[^\s<>"\)]+)/g;
 
     let match;
     while ((match = linkRegex.exec(text)) !== null) {

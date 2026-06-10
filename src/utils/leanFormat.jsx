@@ -30,8 +30,8 @@ import React from 'react';
 export const formatLeanText = (text, onNavigateToPrompt) => {
     if (typeof text !== 'string') return text;
 
-    // Regex for: `InlineCode`, {{Variables}}, @Snippets, <XMLTags>, [Links](url)
-    const parts = text.split(/(`[^`\n]+`|\{\{.*?\}\}|(?<![a-zA-Z0-9_.+\-])@(?:\{.*?\}|[\w.-]+)|<[^>]+>|\[.*?\]\(.*?\))/g);
+    // Regex for: `InlineCode`, {{Variables}}, @Snippets, <XMLTags>, [Links](url) (Lookbehind schützt E-Mail-Adressen, kein gieriges Punkt-Matching)
+    const parts = text.split(/(`[^`\n]+`|\{\{.*?\}\}|(?<![a-zA-Z0-9_.+\-])@(?:\{.*?\}|[\w-]+(?:\.[\w-]+)*)|<[^>]+>|\[.*?\]\(.*?\))/g);
 
     return parts.map((part, i) => {
         if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
@@ -104,8 +104,8 @@ export const replaceLeanLinksOutsideCode = (text, snippets = []) => {
         // Otherwise apply replacements
         let res = part.replace(/\[\[(.*?)\]\]/g, (match, title) => `[${title}](prompt:${encodeURIComponent(title)})`);
         
-        // Handle Snippets
-        res = res.replace(/(?<![a-zA-Z0-9_.+\-])@(?:\{([^{}]+)\}|([\w.-]+))/g, (match, nameInBrackets, nameSimple) => {
+        // Handle Snippets (Lookbehind schützt E-Mail-Adressen, kein gieriges Punkt-Matching)
+        res = res.replace(/(?<![a-zA-Z0-9_.+\-])@(?:\{([^{}]+)\}|([\w-]+(?:\.[\w-]+)*))/g, (match, nameInBrackets, nameSimple) => {
             const cleanName = (nameInBrackets || nameSimple || "").trim();
             const exists = snippets.some(s => s.name === cleanName);
             if (exists) {
