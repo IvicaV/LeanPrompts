@@ -2648,15 +2648,44 @@ const initiateWorkflow = async (promptId) => {
         type="dashboard"
         steps={DASHBOARD_TOUR_STEPS.map((step, index) => {
           let onActivate = undefined;
-          if (index === 1) onActivate = () => setIsSidebarCollapsed(false);
-          if (index === 2) onActivate = () => setIsPromptListCollapsed(false);
-          if (index >= 3 && index <= 6) {
+          
+          if (index === 1) { // Step 2: Sidebar / Navigation
+            onActivate = () => setIsSidebarCollapsed(false);
+          } else if (index === 2) { // Step 3: Library
+            onActivate = () => setIsPromptListCollapsed(false);
+          } else if (index === 3) { // Step 4: Metadata & Tags (Workspace Header)
             onActivate = () => {
-              if (index === 5) setIsInspectorCollapsed(false);
-              if (index === 3) setIsPromptListCollapsed(false);
-              if (!activePromptId && prompts.length > 0) handlePromptSelect(prompts[0].id);
+              setIsPromptListCollapsed(false);
+              if (!activePromptId && prompts.length > 0) {
+                handlePromptSelect(prompts[0].id);
+              }
+            };
+          } else if (index === 4) { // Step 5: Editor & Smart Syntax
+            onActivate = () => {
+              if (!activePromptId && prompts.length > 0) {
+                handlePromptSelect(prompts[0].id);
+              }
+            };
+          } else if (index === 5) { // Step 6: Inspector Panel
+            onActivate = () => {
+              setIsInspectorCollapsed(false);
+              if (!activePromptId && prompts.length > 0) {
+                handlePromptSelect(prompts[0].id);
+              }
+            };
+          } else if (index === 6 || index === 7) { // Step 7 & 8: Direct Inject Bar
+            onActivate = () => {
+              setIsInspectorCollapsed(false);
+              if (!activePromptId && prompts.length > 0) {
+                handlePromptSelect(prompts[0].id);
+              }
+            };
+          } else if (index === 8) { // Step 9: Security Warning
+            onActivate = () => {
+              setIsPromptListCollapsed(false);
             };
           }
+
           return { ...step, onActivate };
         })}
       />

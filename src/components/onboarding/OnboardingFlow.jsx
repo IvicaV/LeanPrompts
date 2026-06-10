@@ -46,10 +46,20 @@ export default function OnboardingFlow({ steps = [], type }) {
             activeStep.onActivate();
         }
 
+        let resizeObserver = null;
+        let observedElement = null;
+
         const updatePosition = () => {
             const element = activeStep.target ? document.querySelector(activeStep.target) : null;
 
             if (element) {
+                if (resizeObserver && element !== observedElement) {
+                    if (observedElement) {
+                        try { resizeObserver.unobserve(observedElement); } catch (e) {}
+                    }
+                    try { resizeObserver.observe(element); } catch (e) {}
+                    observedElement = element;
+                }
                 const rect = element.getBoundingClientRect();
                 setCoords({
                     top: rect.top,
@@ -114,18 +124,38 @@ export default function OnboardingFlow({ steps = [], type }) {
 
         updatePosition();
         window.addEventListener('resize', updatePosition);
+        
+        // Polling interval to ensure we catch the target when it gets added asynchronously to DOM
+        const interval = setInterval(updatePosition, 100);
+
+        if (typeof ResizeObserver !== 'undefined') {
+            resizeObserver = new ResizeObserver(() => {
+                updatePosition();
+            });
+            try {
+                resizeObserver.observe(document.body);
+            } catch (e) {
+                console.warn("ResizeObserver observe body failed", e);
+            }
+        }
+
         const timer = setTimeout(updatePosition, delay);
 
         return () => {
             window.removeEventListener('resize', updatePosition);
+            clearInterval(interval);
             clearTimeout(timer);
+            if (resizeObserver) {
+                try {
+                    resizeObserver.disconnect();
+                } catch (e) {}
+            }
         };
     }, [currentStep, isActive, activeStep]);
 
     if (!isActive || !activeStep) return null;
 
     const isLast = currentStep === steps.length - 1;
-
     return (
         <div className="fixed inset-0 z-[9999] pointer-events-none overflow-hidden font-sans">
             {/* Backdrop with Spotlight */}

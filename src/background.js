@@ -36,6 +36,7 @@ self.addEventListener('unhandledrejection', (event) => {
 import { dbAPI } from './utils/db';
 import { SEED_PROMPTS, SEED_SNIPPETS } from './utils/seedData';
 import { Adapters } from './engine_core/adapters';
+import { backupManager } from './utils/backup';
 
 // GLOBAL STATE FOR SPLIT SCREEN TARGETING
 let dedicatedBrowserWindowId = null;
@@ -1656,3 +1657,47 @@ chrome.windows.onRemoved.addListener((windowId) => {
   }
 });
 /* @PROTECTED_REGION END: SPLIT_SCREEN_LIFECYCLE */
+// src/background.js (Hinzufügen am Ende der Datei)
+// --- INTEGRATION: WEB-TO-EXTENSION INJEKTIONS-BRÜCKE ---
+chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
+  // Sicherheits-Check: Nur Anfragen von Ihren registrierten Domains erlauben
+  const allowedOrigins = [
+    "https://leanprompts-website.vercel.app", 
+    "http://localhost:4321"
+  ];
+  
+  if (!allowedOrigins.includes(sender.origin)) {
+    sendResponse({ success: false, error: "ACCESS_DENIED: Origin not whitelisted." });
+    return;
+  }
+
+  if (request.action === "IMPORT_EXTERNAL_WORKFLOW") {
+    (async () => {
+      try {
+        const workflowData = request.data;
+        
+        // 1. Hole alle aktuellen Prompts und Snippets aus der lokalen IndexedDB
+        const prompts = await dbAPI.getAllPrompts();
+        const snippets = await dbAPI.getAllSnippets();
+
+        // 2. Konflikt-Check: Prüfe, ob importierte Snippets bereits lokal existieren
+        const conflicts = { snippets: [], knowledge: [] };
+        if (workflowData.snippets) {
+          workflowData.snippets.forEach(incoming => {
+            const existing = snippets.find(s => s.name === incoming.name);
+            if (existing) conflicts.snippets.push({ incoming, existing });
+          });
+        }
+
+        // 3. Importiere die Daten atomar über die bestehende Import-Pipeline der Extension
+        await backupManager.performWorkflowImport(workflowData, conflicts, () => {});
+        
+        sendResponse({ success: true, message: "Workflow successfully imported!" });
+      } catch (err) {
+        console.error("LeanPrompts: External import failed", err);
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true; // Hält den asynchronen Antwortkanal für sendResponse offen
+  }
+});

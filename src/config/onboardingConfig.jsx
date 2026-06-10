@@ -83,10 +83,8 @@ export const DASHBOARD_TOUR_STEPS = [
     icon: <Check size={20} className="text-emerald-500" />
   },
   {
-    target: "#dash-library",
     title: "⚠️ Crucial: 100% Local Storage",
     content: "Your data never touches a cloud. It lives ONLY in your browser. If you clear your browser's site data or cache, your prompts WILL BE DELETED. You must export backups regularly.",
-    position: "right",
     icon: <AlertTriangle size={20} className="text-red-500" />
   }
 ];
