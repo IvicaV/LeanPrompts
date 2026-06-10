@@ -453,8 +453,8 @@ https://github.com/IvicaV/LeanPrompts`;
         const ua = window.navigator.userAgent;
         const isOpera = ua.includes("Opera") || ua.includes("OPR/");
 
-        // Use search URLs as functional fallbacks until final IDs are available
-        const CHROME_URL = 'https://chromewebstore.google.com/search/LeanPrompts';
+        // Direct Chrome Web Store link and Opera fallback
+        const CHROME_URL = 'https://chromewebstore.google.com/detail/leanprompts-studio/pbdbopolbilaemiphldmecmlppedajnd';
         const OPERA_URL = 'https://addons.opera.com/search/?query=LeanPrompts';
 
         window.open(isOpera ? OPERA_URL : CHROME_URL, '_blank');
