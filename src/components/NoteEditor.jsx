@@ -99,14 +99,14 @@ export default function NoteEditor({
       return prompt ? `[[prompt:${prompt.id}]]` : match;
     });
 
-    // @{name} -> @#ID
-    result = result.replace(/@\{([^\}]+)\}/g, (match, name) => {
+    // @{name} -> @#ID (Lookbehind schützt E-Mail-Adressen)
+    result = result.replace(/(?<![a-zA-Z0-9_.+\-])@\{([^\}]+)\}/g, (match, name) => {
       const snippet = snippets.find(s => s.name === name.trim());
       return snippet ? `@#${snippet.id}` : match;
     });
 
-    // @name -> @#ID (but not @#ID which is already ID-based)
-    result = result.replace(/@(?!#)(?!\{)([^\s\[\]{}]+)/g, (match, name) => {
+    // @name -> @#ID (Lookbehind schützt E-Mail-Adressen)
+    result = result.replace(/(?<![a-zA-Z0-9_.+\-])@(?!#)(?!\{)([^\s\[\]{}]+)/g, (match, name) => {
       const snippet = snippets.find(s => s.name === name);
       return snippet ? `@#${snippet.id}` : match;
     });
@@ -213,7 +213,7 @@ export default function NoteEditor({
 
   // Bug 2: Detect if cursor is inside an existing complete link
   const isInsideExistingLink = useCallback((text, cursorPos) => {
-    const linkRegex = /\[\[[^\]]+\]\]|@\{[^\}]+\}|@[^\s\[\]{}]+/g;
+    const linkRegex = /\[\[[^\]]+\]\]|(?<![a-zA-Z0-9_.+\-])@\{[^\}]+\}|(?<![a-zA-Z0-9_.+\-])@[^\s\[\]{}]+/g;
     let match;
     while ((match = linkRegex.exec(text)) !== null) {
       // Include cursor at start position (>=) to catch editing at the opening [[
@@ -226,7 +226,7 @@ export default function NoteEditor({
 
   // Bug 2: Find the start index of the link containing the cursor
   const findLinkStart = useCallback((text, cursorPos) => {
-    const linkRegex = /\[\[[^\]]+\]\]|@\{[^\}]+\}|@[^\s\[\]{}]+/g;
+    const linkRegex = /\[\[[^\]]+\]\]|(?<![a-zA-Z0-9_.+\-])@\{[^\}]+\}|(?<![a-zA-Z0-9_.+\-])@[^\s\[\]{}]+/g;
     let match;
     while ((match = linkRegex.exec(text)) !== null) {
       if (cursorPos >= match.index && cursorPos <= match.index + match[0].length) {
@@ -246,16 +246,16 @@ export default function NoteEditor({
       return;
     }
 
-    const atBracketMatch = textBeforeCursor.match(/@\{(?![^\}]*\})([^\}]*)$/);
+    const atBracketMatch = textBeforeCursor.match(/(?<![a-zA-Z0-9_.+\-])@\{(?![^\}]*\})([^\}]*)$/);
     if (atBracketMatch) {
       const triggerStart = cursorPos - atBracketMatch[0].length;
       openPicker('@', atBracketMatch[1] || '', triggerStart);
       return;
     }
 
-    const atMatch = textBeforeCursor.match(/(?:^|\s)@(?!\S+\s)(?!\{)([^\s\[\]{}]*)$/);
+    const atMatch = textBeforeCursor.match(/(?<![a-zA-Z0-9_.+\-])@(?!\S+\s)(?!\{)([^\s\[\]{}]*)$/);
     if (atMatch) {
-      const triggerStart = cursorPos - atMatch[0].length + (atMatch[0][0] === ' ' || atMatch[0][0] === '\n' ? 1 : 0);
+      const triggerStart = cursorPos - atMatch[0].length;
       openPicker('@', atMatch[1] || '', triggerStart);
       return;
     }
@@ -384,8 +384,8 @@ export default function NoteEditor({
 
     const parts = [];
     let lastIndex = 0;
-    // Extended regex: inline code + internal links + @{...} + URLs (https?://...)
-    const linkRegex = /`([^`\n]+)`|\[\[kb:([^\]]+)\]\]|\[\[([^\]]+)\]\]|@\{([^\}]+)\}|@([^\s\[\]{}]+)|(https?:\/\/[^\s<>"\)]+)/g;
+    // Extended regex: inline code + internal links + @{...} + URLs (https?://...) (Lookbehind schützt E-Mail-Adressen)
+    const linkRegex = /`([^`\n]+)`|\[\[kb:([^\]]+)\]\]|\[\[([^\]]+)\]\]|(?<![a-zA-Z0-9_.+\-])@\{([^\}]+)\}|(?<![a-zA-Z0-9_.+\-])@([^\s\[\]{}]+)|(https?:\/\/[^\s<>"\)]+)/g;
 
     let match;
     while ((match = linkRegex.exec(text)) !== null) {

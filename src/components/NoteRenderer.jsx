@@ -35,8 +35,8 @@ export default function NoteRenderer({ text, onNavigate, prompts = [], snippets 
         let lastIndex = 0;
 
         // Combined regex for all link types
-        // [[Prompt: Title]] or [[KB: Title]] or @snippet-name
-        const linkRegex = /\[\[(Prompt|KB):\s*([^\]]+)\]\]|@(\S+)/g;
+        // [[Prompt: Title]] or [[KB: Title]] or @snippet-name (Lookbehind schützt E-Mail-Adressen)
+        const linkRegex = /\[\[(Prompt|KB):\s*([^\]]+)\]\]|(?<![a-zA-Z0-9_.+\-])@(\S+)/g;
 
         let match;
         while ((match = linkRegex.exec(text)) !== null) {
