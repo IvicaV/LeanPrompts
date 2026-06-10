@@ -253,7 +253,7 @@ export default function NoteEditor({
       return;
     }
 
-    const atMatch = textBeforeCursor.match(/(?<![a-zA-Z0-9_.+\-])@(?!\S+\s)(?!\{)([^\s\[\]{}]*)$/);
+    const atMatch = textBeforeCursor.match(/(?<![a-zA-Z0-9_.+\-])@(?!\S+\s)(?!\{)([\w-]+(?:\.[\w-]+)*)?$/);
     if (atMatch) {
       const triggerStart = cursorPos - atMatch[0].length;
       openPicker('@', atMatch[1] || '', triggerStart);
