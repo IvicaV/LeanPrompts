@@ -15,10 +15,12 @@ node_modules
 # Build Output (Zwingend ignorieren!)
 dist
 dist-ssr
+dist-zip
 *.local
 build/
 .vite/
 .tailwind/
+*.zip
 
 # Editor Directories
 .vscode/*
@@ -50,6 +52,7 @@ SCRATCHPAD.md
 project_context.txt
 fix_adapters.py
 restore_adapters.py
+tasks/
 
 # Python-Cache (falls genutzt)
 __pycache__/
