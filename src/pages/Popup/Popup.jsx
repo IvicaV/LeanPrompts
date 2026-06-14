@@ -2947,8 +2947,12 @@ export default function Popup() {
                                                     />
                                                 ) : (
                                                     <div className="text-[12px] dark:text-zinc-400 text-text-muted line-clamp-2 leading-relaxed font-normal dark:group-hover:text-zinc-300 group-hover:text-text-main transition-colors">
-                                                        {stripComments(prompt.content)}
-                                                    </div>
+                                                         {(() => {
+                                                             let content = stripComments(prompt.content || "");
+                                                             content = content.replace(/!\[(.*?)\]\(data:image\/[^)]*\)/g, '[Image: $1]');
+                                                             return content || "Empty...";
+                                                         })()}
+                                                     </div>
                                                 )}
                                             </div>
 
