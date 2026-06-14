@@ -42,7 +42,8 @@ const PromptCard = memo(({
     isCreatingCollection, setIsCreatingCollection, newCollectionName, setNewCollectionName,
     backlinkDropdownOpen, setBacklinkDropdownOpen, backlinkPopupPos, setBacklinkPopupPos,
     onSelect, toggleSelection, handleTogglePin, requestDeleteSingle, onDuplicateRequest, setRating,
-    onCreateCollection, assignToCollection, setTagEditorConfig, onOpenPromptNote, onOpenKnowledgeTile
+    onCreateCollection, assignToCollection, setTagEditorConfig, onOpenPromptNote, onOpenKnowledgeTile,
+    hideThumbnail
 }) => {
     const isSubmittingColRef = useRef(false);
 
@@ -78,7 +79,7 @@ const PromptCard = memo(({
                     <div className="min-w-0 flex-1 flex flex-col gap-0.5">
                         <div className="flex items-center justify-between relative mb-0.5">
                             <div className="flex items-center gap-2 min-w-0 pr-8">
-                                {prompt.thumbnailImage && (
+                                {prompt.thumbnailImage && !hideThumbnail && (
                                     <img 
                                         src={prompt.thumbnailImage} 
                                         className="w-7 h-7 rounded object-cover ring-1 ring-white/10 shrink-0 shadow-sm" 
@@ -445,6 +446,7 @@ const PromptCard = memo(({
     if (prev.isActive !== next.isActive) return false;
     if (prev.isPinned !== next.isPinned) return false;
     if (prev.isDropdownOpen !== next.isDropdownOpen) return false;
+    if (prev.hideThumbnail !== next.hideThumbnail) return false;
 
     // 3. Wenn in DIESER Karte gerade ein Dropdown offen ist, müssen wir auf Eingaben reagieren
     if (next.isDropdownOpen) {
@@ -505,6 +507,19 @@ export default function PromptList({
     });
 
     const scrollRef = useRef(null);
+    const containerRef = useRef(null);
+    const [containerWidth, setContainerWidth] = useState(null);
+
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const observer = new ResizeObserver((entries) => {
+            for (let entry of entries) {
+                setContainerWidth(entry.contentRect.width);
+            }
+        });
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, []);
 
     // AUTO-SCROLL TO ACTIVE PROMPT ON MOUNT OR EXTERNAL NAVIGATION
     // ZERO-REGRESSION: Simplified and robust since elements are no longer virtualized away
@@ -578,7 +593,7 @@ export default function PromptList({
 
     return (
         <>
-            <div className="flex-1 flex flex-col min-h-0 relative">
+            <div ref={containerRef} className="flex-1 flex flex-col min-h-0 relative">
                 {prompts.length > 0 && (
                     <div className="flex items-center gap-3 px-5 py-2 border-b border-border/50 bg-bg-surface/50 backdrop-blur-sm shrink-0 z-10">
                         <div
@@ -627,6 +642,7 @@ export default function PromptList({
                                         prompt={prompt}
                                         isSelected={isSelected}
                                         isActive={isActive}
+                                        hideThumbnail={containerWidth !== null && containerWidth < 250}
                                         isPinned={isPinned}
                                         isDropdownOpen={isDropdownOpen}
                                         collections={collections}

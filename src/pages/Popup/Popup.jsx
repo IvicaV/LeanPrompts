@@ -60,6 +60,25 @@ const getActiveTab = async () => {
 };
 // @PROTECTED_REGION END: getActiveTab
 
+class MarkdownErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError(error) {
+        return { hasError: true };
+    }
+    componentDidCatch(error, errorInfo) {
+        console.error("Rendering Error:", error, errorInfo);
+    }
+    render() {
+        if (this.state.hasError) {
+            return <div className="p-2 text-red-500 text-xs bg-red-50 dark:bg-red-900/10 rounded">Preview Error</div>;
+        }
+        return this.props.children;
+    }
+}
+
 export default function Popup() {
     // --- 1. STATE & STORE ---
     const store = usePromptStore();
@@ -164,6 +183,9 @@ export default function Popup() {
 
     // NEW: Track which pinned draft is currently active
     const [activeDraftId, setActiveDraftId] = useState(null);
+
+    const [openDropdown, setOpenDropdown] = useState(null);
+    const [highlightState, setHighlightState] = useState({ names: [], theme: 'primary' });
 
     const listRef = useRef(null);
     const inputRef = useRef(null);
@@ -1297,6 +1319,30 @@ export default function Popup() {
         if (missingReq.length > 0) {
             const names = missingReq.map(v => v.replace(/^!file:/i, '').replace(/^!/, ''));
             showNotify(`Required fields missing: ${names.join(', ')}`, 'error');
+
+            setHighlightState({ names: missingReq, theme: 'amber' });
+            setTimeout(() => {
+                setHighlightState({ names: [], theme: 'primary' });
+            }, 2000);
+
+            // Smoothly scroll and focus the first missing required variable
+            const firstMissing = missingReq[0];
+            const cleanKey = firstMissing.replace(/^!/, '').replace(/^!file:/i, 'file:');
+            const varEl = document.getElementById(`var-field-${cleanKey}`);
+            if (varEl && listRef.current) {
+                const container = listRef.current;
+                const containerRect = container.getBoundingClientRect();
+                const elRect = varEl.getBoundingClientRect();
+                
+                container.scrollTo({
+                    top: container.scrollTop + (elRect.top - containerRect.top) - (containerRect.height / 2) + (elRect.height / 2),
+                    behavior: 'smooth'
+                });
+
+                const inputTarget = varEl.querySelector('textarea, button, select');
+                if (inputTarget) inputTarget.focus({ preventScroll: true });
+            }
+
             window.dispatchEvent(new CustomEvent('lp-highlight-variables', {
                 detail: { names: missingReq, theme: 'amber' }
             }));
@@ -2345,13 +2391,40 @@ export default function Popup() {
                                                                     if (v.name.toLowerCase().startsWith('!file:')) displayName = v.name.substring(6).trim();
                                                                     else if (v.name.toLowerCase().startsWith('file:')) displayName = v.name.substring(5).trim();
                                                                     else if (isRequired) displayName = v.name.substring(1).trim();
-                                                                    // Fallback-Sicherheit für State-Abfrage
+                                                                    
                                                                     const cleanKey = v.name.replace(/^!/, '').replace(/^!file:/i, 'file:');
                                                                     const userVal = variableValues[cleanKey] !== undefined ? variableValues[cleanKey] : variableValues[v.name];
                                                                     const varFiles = isFileVar ? (userVal || []) : [];
+                                                                    const isIgnored = selectedPrompt?.ignoredVariables?.includes(v.name);
+
+                                                                    // --- DEEP PARSING FOR DROPDOWNS & DEFAULT VALUES ---
+                                                                    let rawDefault = "";
+                                                                    const stepContentResolved = resolveSnippets(step.content || "", snippets);
+                                                                    if (!isFileVar && stepContentResolved) {
+                                                                        try {
+                                                                            const escapedVarName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                                                            const regex = new RegExp(`\\{\\{\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
+                                                                            const match = stepContentResolved.match(regex);
+                                                                            if (match && match[1] && match[1].trim()) {
+                                                                                rawDefault = match[1].trim();
+                                                                            }
+                                                                        } catch (e) { }
+                                                                    }
+
+                                                                    const dropdownOptions = rawDefault.includes('|') 
+                                                                        ? rawDefault.split('|').map(s => s.trim()).filter(Boolean) 
+                                                                        : [];
+                                                                    const isDropdown = dropdownOptions.length > 1;
+                                                                    const defaultVal = isDropdown ? dropdownOptions[0] : "";
+                                                                    // ----------------------------------------------------
+
+                                                                    const isHighlighted = highlightState.names.includes(v.name);
+                                                                    const themeClass = highlightState.theme === 'amber'
+                                                                        ? 'border-amber-400 ring-2 ring-amber-400 bg-amber-400/10 shadow-lg shadow-amber-400/10'
+                                                                        : 'border-primary ring-2 ring-primary bg-primary-subtle shadow-lg shadow-primary/10';
 
                                                                     return (
-                                                                        <div key={v.name} className="space-y-2 group/var transition-all">
+                                                                        <div key={v.name} id={`var-field-${cleanKey}`} className="space-y-2 group/var transition-all">
                                                                             <div className="flex items-center justify-between px-0.5">
                                                                                 <label className={`text-[10px] font-bold uppercase tracking-wider select-none flex items-center gap-2 transition-colors ${userVal ? 'text-green-500' : 'text-text-muted group-hover/var:text-text-main'}`}>
                                                                                     {displayName}
@@ -2373,7 +2446,7 @@ export default function Popup() {
                                                                                 <div className="space-y-2">
                                                                                     {Array.isArray(varFiles) && varFiles.length > 0 && (
                                                                                         <div className="space-y-1">
-                                                                                            {(Array.isArray(variableValues[v.name]) ? variableValues[v.name] : []).map((file, idx) => (
+                                                                                            {varFiles.map((file, idx) => (
                                                                                                 <div key={idx} className="flex items-center justify-between p-1.5 bg-bg-elevated rounded border border-border text-xs text-text-main">
                                                                                                     <div className="flex items-center gap-2 truncate">
                                                                                                         <FileIcon size={12} className="text-primary shrink-0" />
@@ -2396,10 +2469,11 @@ export default function Popup() {
 
                                                                                     <div
                                                                                         data-droppable="true"
-                                                                                        className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-all duration-200 ${draggingVars[v.name]
-                                                                                            ? 'border-primary bg-primary/10 scale-[1.02] shadow-lg shadow-primary/5'
-                                                                                            : 'border-border hover:bg-bg-elevated hover:border-primary/50'
-                                                                                            }`}
+                                                                                        className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-all duration-200 ${
+                                                                                            isHighlighted ? themeClass : draggingVars[v.name]
+                                                                                                ? 'border-primary bg-primary/10 scale-[1.02] shadow-lg shadow-primary/5'
+                                                                                                : 'border-border hover:bg-bg-elevated hover:border-primary/50'
+                                                                                        }`}
                                                                                         onDragOver={e => e.preventDefault()}
                                                                                         onDragEnter={e => {
                                                                                             e.preventDefault();
@@ -2427,7 +2501,6 @@ export default function Popup() {
                                                                                         }}
                                                                                         onClick={(e) => {
                                                                                             e.stopPropagation();
-                                                                                            // Restore transient input structure to ensure file is added to the correct variable 
                                                                                             const input = document.createElement('input');
                                                                                             input.type = 'file';
                                                                                             input.multiple = true;
@@ -2449,14 +2522,69 @@ export default function Popup() {
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
+                                                                            ) : isDropdown ? (
+                                                                                // --- ENUM SELECTION RENDERER (Dashboard Parity) ---
+                                                                                <div className="relative">
+                                                                                    <button
+                                                                                        disabled={isIgnored}
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            if (!isIgnored) setOpenDropdown(openDropdown === v.name ? null : v.name);
+                                                                                        }}
+                                                                                        className={`w-full bg-bg-elevated border rounded-lg pl-3 pr-8 py-2 text-xs text-text-main focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all shadow-sm font-sans flex items-center justify-between group/dropdown hover:border-primary/50 text-left ${
+                                                                                            isHighlighted ? themeClass : 'border-border'
+                                                                                        } ${
+                                                                                            isIgnored ? 'bg-bg cursor-not-allowed border-dashed opacity-50' : ''
+                                                                                        }`}
+                                                                                    >
+                                                                                        <span className="truncate">{userVal || defaultVal}</span>
+                                                                                        <ChevronDown size={14} className={`text-text-muted group-hover/dropdown:text-primary transition-all duration-200 absolute right-3 top-1/2 -translate-y-1/2 ${openDropdown === v.name ? 'rotate-180 text-primary' : ''}`} />
+                                                                                    </button>
+
+                                                                                    {openDropdown === v.name && (
+                                                                                        <>
+                                                                                            <div className="fixed inset-0 z-[60]" onClick={(e) => { e.stopPropagation(); setOpenDropdown(null); }}></div>
+                                                                                            <div className="absolute left-0 right-0 top-full mt-1.5 bg-bg-surface border border-border rounded-xl shadow-2xl z-[70] p-1.5 animate-in fade-in slide-in-from-top-2 duration-150 dm-dropdown">
+                                                                                                <div className="max-h-32 overflow-y-auto custom-scrollbar">
+                                                                                                    {dropdownOptions.map((opt, i) => {
+                                                                                                        const isSelected = (userVal || defaultVal) === opt;
+                                                                                                        return (
+                                                                                                            <button
+                                                                                                                key={i}
+                                                                                                                onClick={(e) => {
+                                                                                                                    e.stopPropagation();
+                                                                                                                    handleVariableChange(v.name, opt);
+                                                                                                                    setOpenDropdown(null);
+                                                                                                                }}
+                                                                                                                className={`w-full flex items-start justify-between px-3 py-2 rounded-lg text-xs transition-all text-left ${
+                                                                                                                    isSelected
+                                                                                                                        ? 'bg-primary/10 text-primary font-semibold'
+                                                                                                                        : 'text-text-muted hover:text-text-main hover:bg-bg-hover'
+                                                                                                                }`}
+                                                                                                            >
+                                                                                                                <span className="line-clamp-2 leading-relaxed pr-2">{opt}</span>
+                                                                                                                {isSelected && <Check size={12} className="ml-auto shrink-0 mt-0.5" />}
+                                                                                                            </button>
+                                                                                                        );
+                                                                                                    })}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </>
+                                                                                    )}
+                                                                                </div>
                                                                             ) : (
                                                                                 <textarea
                                                                                     ref={(el) => {
                                                                                         if (el) enableDragSelectScroll(el);
                                                                                     }}
-                                                                                    placeholder="Value..."
-                                                                                    className="w-full bg-bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-text-main placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all resize-y min-h-[60px] font-sans leading-relaxed shadow-sm"
-                                                                                    value={userVal || ''}
+                                                                                    disabled={isIgnored}
+                                                                                    placeholder={isRequired ? "Required..." : (rawDefault ? `Default: ${rawDefault}` : "Value...")}
+                                                                                    className={`w-full bg-bg-elevated border rounded-lg px-3 py-2 text-xs text-text-main placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all resize-y min-h-[60px] font-sans leading-relaxed shadow-sm ${
+                                                                                        isHighlighted ? themeClass : 'border-border'
+                                                                                    } ${
+                                                                                        isIgnored ? 'bg-bg cursor-not-allowed border-dashed opacity-50' : ''
+                                                                                    }`}
+                                                                                    value={isIgnored ? "" : (userVal || '')}
                                                                                     onChange={e => handleVariableChange(v.name, e.target.value)}
                                                                                     onFocus={() => setSelectedStepId(step.id)}
                                                                                     onPaste={(e) => handleVariablePaste(e, step.id)}
@@ -2572,10 +2700,16 @@ export default function Popup() {
                                                                         setSelectedStepId(step.id); // Ensure step is activated
                                                                         setScrollEnabledStepId(step.id);
                                                                     }}
-                                                                    className={`text-[12px] text-text-muted font-mono leading-relaxed bg-bg-secondary/50 p-4 rounded-xl border border-border whitespace-pre-wrap break-words min-h-[60px] max-h-[140px] transition-all relative shadow-inner ${isScrollable ? 'overflow-y-auto custom-scrollbar ring-1 ring-border' : 'overflow-hidden cursor-pointer hover:bg-bg-surface/80 hover:border-border'
+                                                                    className={`text-[12px] text-text-muted font-mono leading-relaxed bg-bg-secondary/20 p-4 rounded-xl border border-border whitespace-pre-wrap break-words min-h-[60px] max-h-[140px] transition-all relative shadow-inner ${isScrollable ? 'overflow-y-auto custom-scrollbar ring-1 ring-border' : 'overflow-hidden cursor-pointer hover:bg-bg-surface/80 hover:border-border'
                                                                         }`}
+                                                                    style={{
+                                                                        backgroundImage: 'radial-gradient(circle, var(--border-main) 1.5px, transparent 1.5px)',
+                                                                        backgroundSize: '12px 12px'
+                                                                    }}
                                                                 >
-                                                                    {step.compiled || <span className="opacity-30 italic">Preview will appear here...</span>}
+                                                                    <MarkdownErrorBoundary>
+                                                                        {step.compiled || <span className="opacity-30 italic">Preview will appear here...</span>}
+                                                                    </MarkdownErrorBoundary>
                                                                 </div>
                                                             )}
                                                         </div>
