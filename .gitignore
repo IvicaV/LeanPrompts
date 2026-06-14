@@ -64,6 +64,7 @@ bundle_code.js
 # ================
 # TEMPORÄRE DATEIEN & ENTWICKLUNGSORDNER (Veröffentlichungs-Bereinigung)
 # ================
+zip.js
 vite.config.js.timestamp-*
 *.bak
 tmp/
