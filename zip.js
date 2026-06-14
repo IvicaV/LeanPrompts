@@ -12,7 +12,32 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir);
 }
 
-const outputPath = path.join(outputDir, 'leanprompts-extension.zip');
+// Version aus dist/manifest.json oder package.json auslesen
+let version = '';
+try {
+  const manifestPath = path.join(__dirname, 'dist', 'manifest.json');
+  if (fs.existsSync(manifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    version = manifest.version || '';
+  }
+} catch (e) {
+  // Ignorieren und Fallback nutzen
+}
+
+if (!version) {
+  try {
+    const packagePath = path.join(__dirname, 'package.json');
+    if (fs.existsSync(packagePath)) {
+      const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+      version = pkg.version || '';
+    }
+  } catch (e) {
+    // Ignorieren
+  }
+}
+
+const zipFilename = version ? `leanprompts-v${version}.zip` : 'leanprompts-extension.zip';
+const outputPath = path.join(outputDir, zipFilename);
 const output = fs.createWriteStream(outputPath);
 const archive = new ZipArchive({
   zlib: { level: 9 } // Höchste Kompressionsstufe
