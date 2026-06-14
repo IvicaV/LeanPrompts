@@ -280,6 +280,58 @@ export default function Popup() {
     }, [selectedPrompt, selectedStepId]);
     // --- END LIVE SYNC RECEIVER & RECOVERY ---
 
+    // --- REAL-TIME RECOVERY LAYER: Listen for file changes from Dashboard ---
+    useEffect(() => {
+        const handleSyncPing = (changes, area) => {
+            if (area !== 'local' || !changes.lp_files_sync_ping) return;
+            const payload = changes.lp_files_sync_ping.newValue;
+            if (!payload || payload.source === 'popup') return;
+
+            if (selectedPrompt && payload.promptId === selectedPrompt.id) {
+                // Lade geänderte Sitzungsdateien im Hintergrund
+                dbAPI.getSessionCache(selectedPrompt.id).then(async (cachedFilesMap) => {
+                    if (!cachedFilesMap) return;
+                    const restoredValues = {};
+                    const restoredStepFiles = {};
+
+                    for (const [key, fList] of Object.entries(cachedFilesMap)) {
+                        const files = await Promise.all(fList.map(async (f) => {
+                            if (f.isGhost || !f.data) return { name: f.name, type: f.type, size: f.size, isGhost: true };
+                            try {
+                                const res = await fetch(f.data);
+                                const blob = await res.blob();
+                                return new File([blob], f.name, { type: f.type });
+                            } catch (err) {
+                                return { name: f.name, type: f.type, size: f.size, isGhost: true };
+                            }
+                        }));
+
+                        if (key.startsWith('file:')) {
+                            restoredValues[key] = files;
+                        } else {
+                            restoredStepFiles[key] = files;
+                        }
+                    }
+
+                    // Text-Variablen schützen und nur Dateivariablen im State aktualisieren
+                    setVariableValues(prev => {
+                        const next = { ...prev };
+                        Object.keys(restoredValues).forEach(k => {
+                            next[k] = restoredValues[k];
+                        });
+                        return next;
+                    });
+                    setStepFiles(restoredStepFiles);
+                }).catch(e => console.warn("Failed real-time file sync in Popup:", e));
+            }
+        };
+
+        if (chrome.storage && chrome.storage.onChanged) {
+            chrome.storage.onChanged.addListener(handleSyncPing);
+            return () => chrome.storage.onChanged.removeListener(handleSyncPing);
+        }
+    }, [selectedPrompt]);
+
     // FIX: Prevent accidental tab navigation when user drops a file outside a dropzone
     useEffect(() => {
         const preventDefault = (e) => e.preventDefault();
@@ -716,7 +768,17 @@ export default function Popup() {
             });
 
             // Save files to IndexedDB (unlimited quota)
-            await dbAPI.saveSessionCache(promptId === 'quick' ? 'quick' : promptId, serializedFiles);
+            const targetDbKey = promptId === 'quick' ? 'quick' : promptId;
+            await dbAPI.saveSessionCache(targetDbKey, serializedFiles);
+
+            // --- Sende Signal an andere geöffnete Fenster (z.B. das Dashboard) ---
+            chrome.storage.local.set({
+                lp_files_sync_ping: {
+                    promptId: targetDbKey,
+                    timestamp: Date.now(),
+                    source: 'popup'
+                }
+            });
         } catch (e) {
             console.error("Save session failed:", e);
         }
@@ -1000,39 +1062,41 @@ export default function Popup() {
                 const data = await chrome.storage.local.get(['lp_last_session']);
                 const session = data.lp_last_session;
 
-                if (session && session.promptId === prompt.id) {
-                    restoredValues = session.values || {};
-
-                    // Restore files per step
-                    // Restore files per step from IndexedDB (Quota Safe)
-                    const cachedFilesMap = await dbAPI.getSessionCache(prompt.id);
-                    if (cachedFilesMap) {
-                        for (const [key, fList] of Object.entries(cachedFilesMap)) {
-                                                        const files = await Promise.all(fList.map(async (f) => {
-                                // SAFE-GUARD: Prevent fetch crashes on imported ghost files lacking Base64 data
-                                if (!f.data) {
-                                    return { name: f.name, type: f.type, size: f.size, isGhost: true };
-                                }
-                                try {
-                                    const res = await fetch(f.data);
-                                    const blob = await res.blob();
-                                    return new File([blob], f.name, { type: f.type });
-                                } catch (err) {
-                                    console.warn("LeanPrompts: Failed to restore file from data URL, falling back to ghost placeholder", err);
-                                    return { name: f.name, type: f.type, size: f.size, isGhost: true };
-                                }
-                            }));
-
-                            if (key.startsWith('file:')) {
-                                restoredValues[key] = files;
-                            } else {
-                                restoredStepFiles[key] = files;
+                // 1. Dateien IMMER aus der IndexedDB laden, wenn vorhanden (Dashboard-Sync)
+                const cachedFilesMap = await dbAPI.getSessionCache(prompt.id);
+                if (cachedFilesMap) {
+                    for (const [key, fList] of Object.entries(cachedFilesMap)) {
+                        const files = await Promise.all(fList.map(async (f) => {
+                            if (f.isGhost || !f.data) {
+                                return { name: f.name, type: f.type, size: f.size, isGhost: true };
                             }
+                            try {
+                                const res = await fetch(f.data);
+                                const blob = await res.blob();
+                                return new File([blob], f.name, { type: f.type });
+                            } catch (err) {
+                                return { name: f.name, type: f.type, size: f.size, isGhost: true };
+                            }
+                        }));
+
+                        if (key.startsWith('file:')) {
+                            restoredValues[key] = files;
+                        } else {
+                            restoredStepFiles[key] = files;
                         }
                     }
                 }
+
+                // 2. Text-Variablen nur laden, wenn die letzte aktive Sitzung übereinstimmt
+                if (session && session.promptId === prompt.id) {
+                    Object.keys(session.values || {}).forEach(k => {
+                        if (!k.startsWith('file:') && !k.startsWith('!file:')) {
+                            restoredValues[k] = session.values[k];
+                        }
+                    });
+                }
             } catch (e) {
-                console.warn("Failed to restore session:", e);
+                console.warn("LeanPrompts: Failed to restore session safely in Popup:", e);
             }
         }
 
@@ -2596,89 +2660,79 @@ export default function Popup() {
                                                             </div>
                                                         )}
 
-                                                        {/* Live Preview & Attachments Action */}
-                                                        <div className="space-y-2 relative group/preview">
-                                                            <div className="flex items-center justify-between pl-1">
-                                                                <div className="text-[10px] font-bold text-text-muted uppercase tracking-wide flex items-center gap-2">
-                                                                    Live Preview
-                                                                    {/* File Count Badge if any */}
-                                                                    {/* Detailed File List Chips */}
-                                                                    {(stepFiles[step.id] || []).map((file, fIdx) => (
-                                                                        <div key={fIdx} className="flex items-center justify-between p-1.5 bg-bg-elevated rounded border border-border text-xs text-text-main">
-                                                                            <div className="flex items-center gap-2 truncate">
-                                                                                <FileIcon size={12} className="text-primary shrink-0" />
-                                                                                <span className="truncate max-w-[150px]" title={file.name}>{file.name}</span>
-                                                                                <span className="text-[10px] text-text-faint ml-auto shrink-0">{formatFileSize(file.size)}</span>
-                                                                            </div>
-                                                                            <button
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    handleFileRemove(step.id, fIdx);
-                                                                                }}
-                                                                                className="text-text-muted hover:text-red-400 p-1"
-                                                                            >
-                                                                                <X size={12} />
-                                                                            </button>
-                                                                        </div>
-                                                                    ))}
+                                                         {/* Live Preview & Attachments Action */}
+                                                         <div className="space-y-2 relative group/preview">
+                                                             {/* 1. Header-Zeile (Sauber separiert und dynamisch) */}
+                                                             <div className="flex items-center justify-between pl-1">
+                                                                 <div className="text-[10px] font-bold text-text-muted uppercase tracking-wide">
+                                                                     {stepFiles[step.id] && stepFiles[step.id].length > 0 
+                                                                         ? "Attachments & Preview" 
+                                                                         : "Live Preview"}
+                                                                 </div>
 
-                                                                    {/* EDIT STATUS INDICATOR */}
-                                                                    {editingStepId === step.id && (
-                                                                        <span className="text-indigo-600 dark:text-purple-400 animate-pulse ml-2 font-bold tracking-widest text-[9px]">EDITING TEMPLATE</span>
-                                                                    )}
-                                                                </div>
+                                                                 <div className="flex items-center gap-1">
+                                                                     {/* CONTEXTUAL EDIT ACTIONS */}
+                                                                     {isActive && (
+                                                                         <div className="flex items-center gap-1 animate-fade-in mr-2 pr-2 border-r border-border">
+                                                                             {editingStepId === step.id ? (
+                                                                                 <>
+                                                                                     <button onClick={(e) => cancelEditing(e)} className="p-1 rounded hover:bg-red-500/10 text-red-400" title="Cancel"><X size={14} /></button>
+                                                                                     <button onClick={(e) => saveEdit(e, selectedPrompt)} className="p-1 rounded hover:bg-emerald-500/10 text-emerald-400" title="Save Template (Ctrl+Enter)"><Save size={14} /></button>
+                                                                                 </>
+                                                                             ) : (
+                                                                                 <button onClick={(e) => startEditing(e, selectedPrompt, step.id)} className="p-1.5 rounded-lg hover:bg-indigo-500/10 dark:hover:bg-purple-500/10 text-indigo-600 dark:text-purple-400 opacity-60 hover:opacity-100 transition-all" title="Edit Step Template"><Pencil size={14} strokeWidth={2.5} /></button>
+                                                                             )}
+                                                                         </div>
+                                                                     )}
 
-                                                                <div className="flex items-center gap-1">
-                                                                    {/* CONTEXTUAL EDIT ACTIONS */}
-                                                                    {isActive && (
-                                                                        <div className="flex items-center gap-1 animate-fade-in mr-2 pr-2 border-r border-border">
-                                                                            {editingStepId === step.id ? (
-                                                                                <>
-                                                                                    <button
-                                                                                        onClick={(e) => cancelEditing(e)}
-                                                                                        className="p-1 rounded hover:bg-red-500/10 text-red-400"
-                                                                                        title="Cancel"
-                                                                                    >
-                                                                                        <X size={14} />
-                                                                                    </button>
-                                                                                    <button
-                                                                                        onClick={(e) => saveEdit(e, selectedPrompt)}
-                                                                                        className="p-1 rounded hover:bg-emerald-500/10 text-emerald-400"
-                                                                                        title="Save Template (Ctrl+Enter)"
-                                                                                    >
-                                                                                        <Save size={14} />
-                                                                                    </button>
-                                                                                </>
-                                                                            ) : (
-                                                                                <>
+                                                                     {/* ATTACHMENT PLUS BUTTON */}
+                                                                     <button
+                                                                         onClick={(e) => {
+                                                                             e.stopPropagation();
+                                                                             setSelectedStepId(step.id);
+                                                                             fileInputRef.current?.click();
+                                                                         }}
+                                                                         className="text-text-faint hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 p-1.5 rounded transition-colors"
+                                                                         title="Attach files to this step"
+                                                                     >
+                                                                         <Plus size={14} strokeWidth={3} />
+                                                                     </button>
+                                                                 </div>
+                                                             </div>
 
-
-                                                                                    <button
-                                                                                        onClick={(e) => startEditing(e, selectedPrompt, step.id)}
-                                                                                        className="p-1.5 rounded-lg hover:bg-indigo-500/10 dark:hover:bg-purple-500/10 text-indigo-600 dark:text-purple-400 opacity-60 hover:opacity-100 transition-all"
-                                                                                        title="Edit Step Template"
-                                                                                    >
-                                                                                        <Pencil size={14} strokeWidth={2.5} />
-                                                                                    </button>
-                                                                                </>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-
-                                                                    {/* ATTACHMENT PLUS BUTTON */}
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setSelectedStepId(step.id);
-                                                                            fileInputRef.current?.click();
-                                                                        }}
-                                                                        className="text-text-faint hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 p-1.5 rounded transition-colors"
-                                                                        title="Attach files to this step"
-                                                                    >
-                                                                        <Plus size={14} strokeWidth={3} />
-                                                                    </button>
-                                                                </div>
-                                                            </div>
+                                                             {/* 2. Vertikal gestapelte Dateiliste (Exakte Design-Parität mit dem Inspector) */}
+                                                             {stepFiles[step.id] && stepFiles[step.id].length > 0 && (
+                                                                 <div className="space-y-1.5 max-h-24 overflow-y-auto custom-scrollbar pr-1 mb-2">
+                                                                     {stepFiles[step.id].map((file, fIdx) => (
+                                                                         <div key={fIdx} className={`flex items-center justify-between p-1.5 bg-bg-elevated rounded border text-xs text-text-main animate-fade-in ${file.isGhost ? 'border-amber-500/30 bg-amber-500/5' : 'border-border'}`}>
+                                                                             <div className="flex items-center gap-2 truncate" title={file.name}>
+                                                                                 <div className={file.isGhost ? 'text-amber-500' : 'text-primary'}>
+                                                                                     <FileIcon size={12} className="shrink-0" />
+                                                                                 </div>
+                                                                                 <span className={`truncate max-w-[180px] ${file.isGhost ? 'text-amber-500 font-medium' : ''}`}>
+                                                                                     {file.name}
+                                                                                 </span>
+                                                                             </div>
+                                                                             <div className="flex items-center gap-2 shrink-0">
+                                                                                 {file.isGhost ? (
+                                                                                     <span className="text-[9px] text-amber-500 font-bold uppercase tracking-wider">Missing</span>
+                                                                                 ) : (
+                                                                                     <span className="text-[10px] text-text-faint">{formatFileSize(file.size)}</span>
+                                                                                 )}
+                                                                                 <button
+                                                                                     onClick={(e) => {
+                                                                                         e.stopPropagation();
+                                                                                         handleFileRemove(step.id, fIdx);
+                                                                                     }}
+                                                                                     className="p-1 hover:bg-bg rounded-md text-text-muted hover:text-red-400 transition-all"
+                                                                                 >
+                                                                                     <X size={12} />
+                                                                                 </button>
+                                                                             </div>
+                                                                         </div>
+                                                                     ))}
+                                                                 </div>
+                                                             )}
 
                                                             {editingStepId === step.id ? (
                                                                 <textarea

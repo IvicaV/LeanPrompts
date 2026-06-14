@@ -63,6 +63,7 @@ import { enableDragSelectScroll } from '../../utils/scrollHelper';
 import { triggerInjection } from '../../utils/injectionAPI';
 import { getLlmConfig } from '../../utils/llmConstants';
 import { backupManager } from '../../utils/backup';
+import { dbAPI } from '../../utils/db'; // <-- Minimal-invasiver Import
 
 export default function Dashboard() {
   // ---------------------------------------------------------------------------
@@ -287,6 +288,169 @@ export default function Dashboard() {
     setPendingKbId(null);
   }, []);
 
+  // --- RECOVERY LAYER: Hydrate session cache safely in background ---
+  useEffect(() => {
+    if (!activePromptId) return;
+
+    let isCurrent = true; // Schutz-Flag gegen unkontrollierte Race Conditions
+
+    const hydrateFiles = async () => {
+      try {
+        const cachedFilesMap = await dbAPI.getSessionCache(activePromptId);
+        if (!isCurrent || !cachedFilesMap) return;
+
+        const activeKey = activeStepId || activePromptId;
+        const tempCache = {};
+
+        for (const [key, fList] of Object.entries(cachedFilesMap)) {
+          if (!fList || !Array.isArray(fList)) continue;
+
+          // Hydriere die Datei-Objekte aus der IndexedDB
+          const files = await Promise.all(fList.map(async (f) => {
+            if (f.isGhost || !f.data) {
+              return { name: f.name, type: f.type, size: f.size, isGhost: true };
+            }
+            try {
+              const res = await fetch(f.data);
+              const blob = await res.blob();
+              return new File([blob], f.name, { type: f.type });
+            } catch (err) {
+              return { name: f.name, type: f.type, size: f.size, isGhost: true };
+            }
+          }));
+
+          const isFileVar = key.startsWith('file:') || key.startsWith('!file:');
+
+          if (isFileVar) {
+            // Dateivariablen gehören in die "values" des aktiven Schritts
+            if (!tempCache[activeKey]) tempCache[activeKey] = { values: {}, files: [] };
+            tempCache[activeKey].values[key] = files;
+          } else {
+            // Schritt-Anhänge gehören in die "files" des spezifischen Schritt-Keys
+            if (!tempCache[key]) tempCache[key] = { values: {}, files: [] };
+            tempCache[key].files = files;
+          }
+        }
+
+        if (isCurrent) {
+          // --- DETECTED-RECOVERY DEEP MERGE ---
+          const mergedCache = { ...sessionCache.current };
+
+          Object.keys(tempCache).forEach(stepKey => {
+            if (!mergedCache[stepKey]) {
+              mergedCache[stepKey] = { values: {}, files: [] };
+            }
+
+            // Schritt-Anhänge aktualisieren
+            mergedCache[stepKey].files = tempCache[stepKey].files || [];
+
+            // Ausschließlich Dateivariablen mergen - Textvariablen im RAM schützen!
+            mergedCache[stepKey].values = {
+              ...mergedCache[stepKey].values, // Bewahre bestehende Textvariablen im Arbeitsspeicher
+              ...tempCache[stepKey].values   // Überschreibe nur die Dateivariablen aus der DB
+            };
+          });
+
+          sessionCache.current = mergedCache;
+
+          // Aktuelle UI-States synchronisieren
+          if (mergedCache[activeKey]) {
+            setCurrentStepFiles(mergedCache[activeKey].files || []);
+            
+            // Datei-Variablen in den aktiven UI-State einpflegen ohne Textvariablen zu manipulieren
+            setVariableValues(prev => {
+              const next = { ...prev };
+              Object.keys(mergedCache[activeKey].values).forEach(vKey => {
+                if (vKey.startsWith('file:') || vKey.startsWith('!file:')) {
+                  next[vKey] = mergedCache[activeKey].values[vKey];
+                }
+              });
+              return next;
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("LeanPrompts: Failed to hydrate session files safely:", e);
+      }
+    };
+
+    hydrateFiles();
+
+    return () => {
+      isCurrent = false; // Verwirft asynchrone DB-Antworten bei schnellen Klicks
+    };
+  }, [activePromptId]);
+
+  // --- REAL-TIME RECOVERY LAYER: Listen for file changes from Popup ---
+  useEffect(() => {
+    const handleSyncPing = (changes, area) => {
+      if (area !== 'local' || !changes.lp_files_sync_ping) return;
+      const payload = changes.lp_files_sync_ping.newValue;
+      if (!payload || payload.source === 'dashboard') return; // Ignore own echoes
+
+      if (activePromptId && payload.promptId === activePromptId) {
+        // Safe async reload from IndexedDB
+        dbAPI.getSessionCache(activePromptId).then(async (cachedFilesMap) => {
+          if (!cachedFilesMap) return;
+
+          const activeKey = activeStepId || activePromptId;
+          const tempCache = {};
+
+          for (const [key, fList] of Object.entries(cachedFilesMap)) {
+            const files = await Promise.all(fList.map(async (f) => {
+              if (f.isGhost || !f.data) return { name: f.name, type: f.type, size: f.size, isGhost: true };
+              try {
+                const res = await fetch(f.data);
+                const blob = await res.blob();
+                return new File([blob], f.name, { type: f.type });
+              } catch (err) {
+                return { name: f.name, type: f.type, size: f.size, isGhost: true };
+              }
+            }));
+
+            const isFileVar = key.startsWith('file:') || key.startsWith('!file:');
+            if (isFileVar) {
+              if (!tempCache[activeKey]) tempCache[activeKey] = { values: {}, files: [] };
+              tempCache[activeKey].values[key] = files;
+            } else {
+              if (!tempCache[key]) tempCache[key] = { values: {}, files: [] };
+              tempCache[key].files = files;
+            }
+          }
+
+          // Deep merge to preserve text values
+          const mergedCache = { ...sessionCache.current };
+          Object.keys(tempCache).forEach(stepKey => {
+            if (!mergedCache[stepKey]) mergedCache[stepKey] = { values: {}, files: [] };
+            mergedCache[stepKey].files = tempCache[stepKey].files || [];
+            mergedCache[stepKey].values = {
+              ...mergedCache[stepKey].values,
+              ...tempCache[stepKey].values
+            };
+          });
+
+          sessionCache.current = mergedCache;
+
+          if (mergedCache[activeKey]) {
+            setCurrentStepFiles(mergedCache[activeKey].files || []);
+            setVariableValues(prev => {
+              const next = { ...prev };
+              Object.keys(mergedCache[activeKey].values).forEach(vKey => {
+                if (vKey.startsWith('file:') || vKey.startsWith('!file:')) {
+                  next[vKey] = mergedCache[activeKey].values[vKey];
+                }
+              });
+              return next;
+            });
+          }
+        }).catch(e => console.warn("Failed real-time file sync in Dashboard:", e));
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleSyncPing);
+    return () => chrome.storage.onChanged.removeListener(handleSyncPing);
+  }, [activePromptId, activeStepId]);
+
   const [savingStepId, setSavingStepId] = useState(null);
   const [copyingStepId, setCopyingStepId] = useState(null);
   const [shareTargetStepId, setShareTargetStepId] = useState(null);
@@ -312,10 +476,52 @@ export default function Dashboard() {
   // Theme
   const [isDarkMode, setIsDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
 
-  // ---------------------------------------------------------------------------
-  // 3. SESSION CACHE (PERSISTENCE)
-  // ---------------------------------------------------------------------------
+  // 3. SESSION CACHE (PERSISTENCE & DEFENSIBER SINGLE-STEP DB SYNC)
   const sessionCache = useRef({});
+
+  // Sichert die Dateien für genau einen Schritt asynchron im Hintergrund
+  const saveStepFilesToDB = async (promptId, stepId, files) => {
+    if (!promptId || !stepId) return;
+    try {
+      // Bestehenden Cache für diesen Prompt laden
+      const existingCache = (await dbAPI.getSessionCache(promptId)) || {};
+
+      // Defensiver Typ-Schutz: Normalisiere zu einem Array
+      const filesArray = Array.isArray(files) ? files : (files ? [files] : []);
+
+      // Serialisiere nur die geänderten Dateien
+      const serialized = await Promise.all(filesArray.map(f => new Promise((resolve, reject) => {
+        if (f.isGhost) {
+          resolve({ name: f.name, type: f.type, size: f.size, isGhost: true });
+          return;
+        }
+        if (f.data && typeof f.data === 'string') {
+          resolve({ name: f.name, type: f.type, size: f.size, data: f.data });
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          name: f.name, type: f.type, size: f.size, data: reader.result
+        });
+        reader.onerror = reject;
+        reader.readAsDataURL(f);
+      })));
+
+      existingCache[stepId] = serialized;
+      await dbAPI.saveSessionCache(promptId, existingCache);
+
+      // --- NEW: Broadcast lightweight metadata ping to other windows ---
+      chrome.storage.local.set({
+        lp_files_sync_ping: {
+          promptId,
+          timestamp: Date.now(),
+          source: 'dashboard'
+        }
+      });
+    } catch (e) {
+      console.warn("LeanPrompts: Failed to persist step files safely:", e);
+    }
+  };
 
   const saveToCache = (id, values, files) => {
     if (!id) return;
@@ -618,19 +824,25 @@ export default function Dashboard() {
     return () => window.removeEventListener('lp-convert-syntax', handleConvert);
   }, [localEditorContent]);
 
+  // B. Zwischenablage-Paste
   useEffect(() => {
     const handlePasteFiles = (e) => {
       const files = e.detail.files;
       if (files && files.length > 0) {
-        setCurrentStepFiles(prev => [...prev, ...files]);
+        const filesArray = Array.isArray(files) ? files : [files];
+        setCurrentStepFiles(prev => {
+          const nextFiles = [...prev, ...filesArray];
+          saveToCache(activeStepId || activePromptId, variableValues, nextFiles);
+          saveStepFilesToDB(activePromptId, activeStepId || activePromptId, nextFiles);
+          return nextFiles;
+        });
         showNotification(`Attached ${files.length} file(s) from clipboard`, 'success');
-        // Switch to variables tab to show the attachment
         if (activeTab !== 'vars') setActiveTab('vars');
       }
     };
     window.addEventListener('lp-paste-files', handlePasteFiles);
     return () => window.removeEventListener('lp-paste-files', handlePasteFiles);
-  }, [activeTab]);
+  }, [activeTab, activePromptId, variableValues, activeStepId]);
 
   useEffect(() => {
     const handleJumpToSnippet = (e) => {
@@ -1426,11 +1638,11 @@ const initiateWorkflow = async (promptId) => {
   // 8. ACTIONS
   // ---------------------------------------------------------------------------
 
+  // C. Datei-Variablen über den Inspector
   const handleVariableChange = (key, value) => {
     const cleanKey = key.replace(/^!/, '').replace(/^!file:/i, 'file:');
     const newVars = { ...variableValues };
     
-    // Bereinige Legacy-Keys (alte Presets) um Duplikate zu verhindern
     const legacyKey = key !== cleanKey ? key : (key.startsWith('file:') ? key.replace('file:', '!file:') : `!${key}`);
     if (newVars[legacyKey] !== undefined) delete newVars[legacyKey];
 
@@ -1443,19 +1655,21 @@ const initiateWorkflow = async (promptId) => {
     setVariableValues(newVars);
     saveToCache(activeStepId || activePromptId, newVars, currentStepFiles);
 
-    // --- ZERO-REGRESSION LIVE SYNC BROADCAST ---
+    // Wenn es sich um eine Dateivariable handelt, sichere sie isoliert
+    if (key.startsWith('file:') || key.startsWith('!file:')) {
+      saveStepFilesToDB(activePromptId, key, value);
+    }
+
+    // Live Sync Broadcast (unverändert)
     if (liveSyncTimer.current) clearTimeout(liveSyncTimer.current);
     liveSyncTimer.current = setTimeout(() => {
       try {
-        // FILTER: Remove File objects to prevent DataCloneError
         const textOnlyVars = {};
         Object.keys(newVars).forEach(k => {
           if (!k.startsWith('file:') && !k.startsWith('!file:')) {
             textOnlyVars[k] = newVars[k];
           }
         });
-
-        // UMGESCHALTET AUF 'local'
         chrome.storage.local.set({
           lp_live_sync_ping: {
             timestamp: Date.now(),
@@ -1465,13 +1679,15 @@ const initiateWorkflow = async (promptId) => {
             values: textOnlyVars
           }
         });
-      } catch (e) { /* silent fail */ }
+      } catch (e) { }
     }, 150);
   };
 
+  // A. Normaler Datei-Upload/Drop über den Inspector
   const handleFilesChange = (newFiles) => {
     setCurrentStepFiles(newFiles);
     saveToCache(activeStepId || activePromptId, variableValues, newFiles);
+    saveStepFilesToDB(activePromptId, activeStepId || activePromptId, newFiles);
   };
 
   const handleClearSession = () => {
