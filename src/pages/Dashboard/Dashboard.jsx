@@ -161,31 +161,32 @@ export default function Dashboard() {
     };
   }, []);
 
-  // --- ZERO-REGRESSION: LIVE SYNC RECEIVER & RECOVERY ---
+  // --- ZERO-REGRESSION: LIVE SYNC RECEIVER & RECOVERY (Direct Store Reading) ---
   useEffect(() => {
-    const currentId = activeStepId || activePromptId;
-
     // 1. RECOVERY ON MOUNT (Fetch missed pings via chrome.storage.local)
     if (activePromptId) {
-        chrome.storage.local.get(['lp_live_sync_ping']).then(data => {
-            const payload = data.lp_live_sync_ping;
-            if (payload && payload.source === 'popup' && payload.promptId === activePromptId && payload.type === 'text') {
-                // Nur wiederherstellen, wenn der Ping nicht älter als 1 Stunde ist (verhindert veraltete Geister-Daten)
-                if (Date.now() - payload.timestamp < 3600000) {
-                    setVariableValues(prev => {
-                        const merged = { ...prev };
-                        Object.keys(payload.values).forEach(k => merged[k] = payload.values[k]);
-                        saveToCache(currentId, merged, currentStepFiles);
-                        return merged;
-                    });
-                }
-            }
-        });
+      chrome.storage.local.get(['lp_live_sync_ping']).then(data => {
+        const payload = data.lp_live_sync_ping;
+        if (payload && payload.source === 'popup' && payload.promptId === activePromptId && payload.type === 'text') {
+          if (Date.now() - payload.timestamp < 3600000) {
+            // Retrieve latest state directly from the store to prevent stale hook closures
+            const latestPrompts = usePromptStore.getState().prompts || [];
+            const latestPrompt = latestPrompts.find(p => p.id === activePromptId);
+            const latestStepId = activeStepId || latestPrompt?.chain?.[0]?.id || activePromptId;
+
+            setVariableValues(prev => {
+              const merged = { ...prev };
+              Object.keys(payload.values).forEach(k => merged[k] = payload.values[k]);
+              saveValuesToCache(latestStepId, merged);
+              return merged;
+            });
+          }
+        }
+      });
     }
 
     // 2. LIVE LISTENER
     const handleLiveSync = (changes, area) => {
-      // UMGESCHALTET AUF 'local'
       if (area !== 'local' || !changes.lp_live_sync_ping) return;
       const payload = changes.lp_live_sync_ping.newValue;
       if (!payload || payload.source === 'dashboard') return; // Ignore own echoes
@@ -195,11 +196,31 @@ export default function Dashboard() {
 
       if (payload.promptId === activePromptId && payload.type === 'text') {
         try {
+          // Retrieve latest state directly from the store to prevent stale hook closures
+          const latestPrompts = usePromptStore.getState().prompts || [];
+          const latestPrompt = latestPrompts.find(p => p.id === activePromptId);
+          const latestStepId = activeStepId || latestPrompt?.chain?.[0]?.id || activePromptId;
+
           setVariableValues(prev => {
-            const merged = { ...prev };
-            Object.keys(payload.values).forEach(k => merged[k] = payload.values[k]);
-            saveToCache(currentId, merged, currentStepFiles);
-            return merged;
+            const next = { ...prev };
+
+            // SMART RESET: If payload values are completely empty, wipe all text variables!
+            if (Object.keys(payload.values || {}).length === 0) {
+              Object.keys(next).forEach(k => {
+                if (!k.startsWith('file:') && !k.startsWith('!file:')) {
+                  delete next[k];
+                }
+              });
+              saveValuesToCache(latestStepId, next);
+              return next;
+            }
+
+            // Otherwise: Merge regular updates
+            Object.keys(payload.values).forEach(k => {
+              next[k] = payload.values[k];
+            });
+            saveValuesToCache(latestStepId, next);
+            return next;
           });
         } catch (e) { /* silent fail */ }
       }
@@ -209,7 +230,7 @@ export default function Dashboard() {
       chrome.storage.onChanged.addListener(handleLiveSync);
       return () => chrome.storage.onChanged.removeListener(handleLiveSync);
     }
-  }, [activeStepId, activePromptId, currentStepFiles]);
+  }, [activeStepId, activePromptId]);
   // --- END LIVE SYNC RECEIVER & RECOVERY ---
 
   // FIX: Prevent accidental tab navigation when user drops a file outside a dropzone
@@ -288,7 +309,7 @@ export default function Dashboard() {
     setPendingKbId(null);
   }, []);
 
-  // --- RECOVERY LAYER: Hydrate session cache safely in background ---
+  // --- RECOVERY LAYER: Hydrate session files and text safely in background ---
   useEffect(() => {
     if (!activePromptId) return;
 
@@ -296,16 +317,21 @@ export default function Dashboard() {
 
     const hydrateFiles = async () => {
       try {
-        const cachedFilesMap = await dbAPI.getSessionCache(activePromptId);
-        if (!isCurrent || !cachedFilesMap) return;
+        // Parallelisiertes Laden für maximale Performance und Latenz-Schutz (Unter 1ms)
+        const [cachedFilesMap, storageData] = await Promise.all([
+          dbAPI.getSessionCache(activePromptId) || {},
+          chrome.storage.local.get(['lp_last_session'])
+        ]);
 
-        const activeKey = activeStepId || activePromptId;
+        if (!isCurrent) return;
+
+        const activeKey = activeStepId || (prompts.find(p => p.id === activePromptId)?.chain?.[0]?.id) || activePromptId;
         const tempCache = {};
 
+        // 1. Bilder hydrieren
         for (const [key, fList] of Object.entries(cachedFilesMap)) {
           if (!fList || !Array.isArray(fList)) continue;
 
-          // Hydriere die Datei-Objekte aus der IndexedDB
           const files = await Promise.all(fList.map(async (f) => {
             if (f.isGhost || !f.data) {
               return { name: f.name, type: f.type, size: f.size, isGhost: true };
@@ -322,14 +348,23 @@ export default function Dashboard() {
           const isFileVar = key.startsWith('file:') || key.startsWith('!file:');
 
           if (isFileVar) {
-            // Dateivariablen gehören in die "values" des aktiven Schritts
             if (!tempCache[activeKey]) tempCache[activeKey] = { values: {}, files: [] };
             tempCache[activeKey].values[key] = files;
           } else {
-            // Schritt-Anhänge gehören in die "files" des spezifischen Schritt-Keys
             if (!tempCache[key]) tempCache[key] = { values: {}, files: [] };
             tempCache[key].files = files;
           }
+        }
+
+        // 2. Persistente Text-Variablen laden (Dashboard-to-Popup Cold Start Sync)
+        const session = storageData.lp_last_session;
+        if (session && session.promptId === activePromptId && session.values) {
+          if (!tempCache[activeKey]) tempCache[activeKey] = { values: {}, files: [] };
+          Object.keys(session.values).forEach(k => {
+            if (!k.startsWith('file:') && !k.startsWith('!file:')) {
+              tempCache[activeKey].values[k] = session.values[k];
+            }
+          });
         }
 
         if (isCurrent) {
@@ -341,13 +376,10 @@ export default function Dashboard() {
               mergedCache[stepKey] = { values: {}, files: [] };
             }
 
-            // Schritt-Anhänge aktualisieren
             mergedCache[stepKey].files = tempCache[stepKey].files || [];
-
-            // Ausschließlich Dateivariablen mergen - Textvariablen im RAM schützen!
             mergedCache[stepKey].values = {
-              ...mergedCache[stepKey].values, // Bewahre bestehende Textvariablen im Arbeitsspeicher
-              ...tempCache[stepKey].values   // Überschreibe nur die Dateivariablen aus der DB
+              ...mergedCache[stepKey].values,
+              ...tempCache[stepKey].values
             };
           });
 
@@ -356,30 +388,31 @@ export default function Dashboard() {
           // Aktuelle UI-States synchronisieren
           if (mergedCache[activeKey]) {
             setCurrentStepFiles(mergedCache[activeKey].files || []);
-            
-            // Datei-Variablen in den aktiven UI-State einpflegen ohne Textvariablen zu manipulieren
             setVariableValues(prev => {
               const next = { ...prev };
+              // Bereinige alte Variablen
+              Object.keys(next).forEach(k => {
+                delete next[k];
+              });
+              // Führe alle neuen (Bilder und Texte) zusammen
               Object.keys(mergedCache[activeKey].values).forEach(vKey => {
-                if (vKey.startsWith('file:') || vKey.startsWith('!file:')) {
-                  next[vKey] = mergedCache[activeKey].values[vKey];
-                }
+                next[vKey] = mergedCache[activeKey].values[vKey];
               });
               return next;
             });
           }
         }
       } catch (e) {
-        console.warn("LeanPrompts: Failed to hydrate session files safely:", e);
+        console.warn("LeanPrompts: Failed to hydrate session safely:", e);
       }
     };
 
     hydrateFiles();
 
     return () => {
-      isCurrent = false; // Verwirft asynchrone DB-Antworten bei schnellen Klicks
+      isCurrent = false; // Verhindert Race Conditions bei schneller Navigation
     };
-  }, [activePromptId]);
+  }, [activePromptId, activeStepId]); // CRITICAL: activeStepId dependency prevents empty-state overrides on step changes
 
   // --- REAL-TIME RECOVERY LAYER: Listen for file changes from Popup ---
   useEffect(() => {
@@ -390,13 +423,14 @@ export default function Dashboard() {
 
       if (activePromptId && payload.promptId === activePromptId) {
         // Safe async reload from IndexedDB
-        dbAPI.getSessionCache(activePromptId).then(async (cachedFilesMap) => {
-          if (!cachedFilesMap) return;
-
-          const activeKey = activeStepId || activePromptId;
+        dbAPI.getSessionCache(activePromptId).then(async (cachedFilesMapResult) => {
+          const cachedFilesMap = cachedFilesMapResult || {};
+          // --- DEFENSIVE ID-RESOLUTION: Always fall back to the first step's ID of the active prompt ---
+          const activeKey = activeStepId || (prompts.find(p => p.id === activePromptId)?.chain?.[0]?.id) || activePromptId;
           const tempCache = {};
 
           for (const [key, fList] of Object.entries(cachedFilesMap)) {
+            if (!fList || !Array.isArray(fList)) continue;
             const files = await Promise.all(fList.map(async (f) => {
               if (f.isGhost || !f.data) return { name: f.name, type: f.type, size: f.size, isGhost: true };
               try {
@@ -420,6 +454,17 @@ export default function Dashboard() {
 
           // Deep merge to preserve text values
           const mergedCache = { ...sessionCache.current };
+
+          // Clear files and file variables in mergedCache first to handle deletions/clears
+          Object.keys(mergedCache).forEach(stepKey => {
+            mergedCache[stepKey].files = [];
+            Object.keys(mergedCache[stepKey].values || {}).forEach(vKey => {
+              if (vKey.startsWith('file:') || vKey.startsWith('!file:')) {
+                delete mergedCache[stepKey].values[vKey];
+              }
+            });
+          });
+
           Object.keys(tempCache).forEach(stepKey => {
             if (!mergedCache[stepKey]) mergedCache[stepKey] = { values: {}, files: [] };
             mergedCache[stepKey].files = tempCache[stepKey].files || [];
@@ -431,18 +476,24 @@ export default function Dashboard() {
 
           sessionCache.current = mergedCache;
 
-          if (mergedCache[activeKey]) {
-            setCurrentStepFiles(mergedCache[activeKey].files || []);
-            setVariableValues(prev => {
-              const next = { ...prev };
-              Object.keys(mergedCache[activeKey].values).forEach(vKey => {
-                if (vKey.startsWith('file:') || vKey.startsWith('!file:')) {
-                  next[vKey] = mergedCache[activeKey].values[vKey];
-                }
-              });
-              return next;
+          const stepData = mergedCache[activeKey] || { files: [], values: {} };
+          setCurrentStepFiles(stepData.files || []);
+          setVariableValues(prev => {
+            const next = { ...prev };
+            // Proaktiv alle alten Dateivariablen entfernen
+            Object.keys(next).forEach(vKey => {
+              if (vKey.startsWith('file:') || vKey.startsWith('!file:')) {
+                delete next[vKey];
+              }
             });
-          }
+            // Neue Dateivariablen einpflegen
+            Object.keys(stepData.values).forEach(vKey => {
+              if (vKey.startsWith('file:') || vKey.startsWith('!file:')) {
+                next[vKey] = stepData.values[vKey];
+              }
+            });
+            return next;
+          });
         }).catch(e => console.warn("Failed real-time file sync in Dashboard:", e));
       }
     };
@@ -523,9 +574,16 @@ export default function Dashboard() {
     }
   };
 
-  const saveToCache = (id, values, files) => {
+  const saveValuesToCache = (id, values) => {
     if (!id) return;
-    sessionCache.current[id] = { values, files };
+    if (!sessionCache.current[id]) sessionCache.current[id] = { values: {}, files: [] };
+    sessionCache.current[id].values = values;
+  };
+
+  const saveFilesToCache = (id, files) => {
+    if (!id) return;
+    if (!sessionCache.current[id]) sessionCache.current[id] = { values: {}, files: [] };
+    sessionCache.current[id].files = files;
   };
 
   const loadFromCache = (id) => {
@@ -832,7 +890,7 @@ export default function Dashboard() {
         const filesArray = Array.isArray(files) ? files : [files];
         setCurrentStepFiles(prev => {
           const nextFiles = [...prev, ...filesArray];
-          saveToCache(activeStepId || activePromptId, variableValues, nextFiles);
+          saveFilesToCache(activeStepId || activePromptId, nextFiles);
           saveStepFilesToDB(activePromptId, activeStepId || activePromptId, nextFiles);
           return nextFiles;
         });
@@ -1237,7 +1295,10 @@ const initiateWorkflow = async (promptId) => {
     flushPendingSave(); // FLUSH BEFORE CONTEXT SWITCH
 
     const currentId = activeStepId || activePromptId;
-    if (currentId) saveToCache(currentId, variableValues, currentStepFiles);
+    if (currentId) {
+      saveValuesToCache(currentId, variableValues);
+      saveFilesToCache(currentId, currentStepFiles);
+    }
 
     const targetPrompt = prompts.find(p => p.id === id);
     const targetStepId = (targetPrompt && targetPrompt.chain && targetPrompt.chain.length > 0)
@@ -1260,7 +1321,10 @@ const initiateWorkflow = async (promptId) => {
     flushPendingSave(); // FLUSH BEFORE CONTEXT SWITCH
 
     const oldId = activeStepId || activePromptId;
-    if (oldId) saveToCache(oldId, variableValues, currentStepFiles);
+    if (oldId) {
+      saveValuesToCache(oldId, variableValues);
+      saveFilesToCache(oldId, currentStepFiles);
+    }
 
     setActiveStepId(stepId);
     loadFromCache(stepId);
@@ -1639,6 +1703,24 @@ const initiateWorkflow = async (promptId) => {
   // ---------------------------------------------------------------------------
 
   // C. Datei-Variablen über den Inspector
+  const persistActiveSessionText = (promptId, values) => {
+    if (!promptId) return;
+    try {
+      const textOnlyVars = {};
+      Object.keys(values || {}).forEach(k => {
+        if (!k.startsWith('file:') && !k.startsWith('!file:')) {
+          textOnlyVars[k] = values[k];
+        }
+      });
+      chrome.storage.local.set({
+        lp_last_session: {
+          promptId: promptId,
+          values: textOnlyVars
+        }
+      });
+    } catch (e) { /* silent fail */ }
+  };
+
   const handleVariableChange = (key, value) => {
     const cleanKey = key.replace(/^!/, '').replace(/^!file:/i, 'file:');
     const newVars = { ...variableValues };
@@ -1653,12 +1735,15 @@ const initiateWorkflow = async (promptId) => {
     }
 
     setVariableValues(newVars);
-    saveToCache(activeStepId || activePromptId, newVars, currentStepFiles);
+    saveValuesToCache(activeStepId || activePromptId, newVars);
 
     // Wenn es sich um eine Dateivariable handelt, sichere sie isoliert
     if (key.startsWith('file:') || key.startsWith('!file:')) {
       saveStepFilesToDB(activePromptId, key, value);
     }
+
+    // Persistiert Textänderungen sofort für das Popup (Kaltstart-sicher)
+    persistActiveSessionText(activePromptId, newVars);
 
     // Live Sync Broadcast (unverändert)
     if (liveSyncTimer.current) clearTimeout(liveSyncTimer.current);
@@ -1686,14 +1771,50 @@ const initiateWorkflow = async (promptId) => {
   // A. Normaler Datei-Upload/Drop über den Inspector
   const handleFilesChange = (newFiles) => {
     setCurrentStepFiles(newFiles);
-    saveToCache(activeStepId || activePromptId, variableValues, newFiles);
+    saveFilesToCache(activeStepId || activePromptId, newFiles);
     saveStepFilesToDB(activePromptId, activeStepId || activePromptId, newFiles);
   };
 
-  const handleClearSession = () => {
+  const handleClearSession = async () => {
+    // --- NEW: Cancel any pending live-sync broadcasts immediately to prevent overwriting ---
+    if (liveSyncTimer.current) {
+      clearTimeout(liveSyncTimer.current);
+      liveSyncTimer.current = null;
+    }
+
     setVariableValues({});
     setCurrentStepFiles([]);
-    saveToCache(activeStepId || activePromptId, {}, []);
+    saveValuesToCache(activeStepId || activePromptId, {});
+    saveFilesToCache(activeStepId || activePromptId, []);
+
+    if (activePromptId) {
+      try {
+        // 1. Überschreibe den IndexedDB-Cache mit einem leeren Objekt
+        await dbAPI.saveSessionCache(activePromptId, {});
+
+        // 2. Kombiniere alle Pings in eine atomare storage.local.set Operation, um Race Conditions zu vermeiden
+        chrome.storage.local.set({
+          lp_files_sync_ping: {
+            promptId: activePromptId,
+            timestamp: Date.now(),
+            source: 'dashboard'
+          },
+          lp_live_sync_ping: {
+            timestamp: Date.now(),
+            source: 'dashboard',
+            promptId: activePromptId,
+            type: 'text',
+            values: {} // Leert alle Textfelder im Popup in Echtzeit
+          },
+          lp_last_session: {
+            promptId: activePromptId,
+            values: {}
+          }
+        });
+      } catch (e) {
+        console.warn("LeanPrompts: Failed to sync clear action safely:", e);
+      }
+    }
   };
 
   const handleSavePreset = async (name) => {
@@ -1767,7 +1888,10 @@ const initiateWorkflow = async (promptId) => {
     }
     
     // 3. Sync to cache
-    saveToCache(activeStepId || activePromptId, newValues, newFiles.length > 0 ? newFiles : currentStepFiles);
+    saveValuesToCache(activeStepId || activePromptId, newValues);
+    if (newFiles.length > 0) {
+      saveFilesToCache(activeStepId || activePromptId, newFiles);
+    }
     
     showNotification(`Loaded preset "${name}"`);
   };

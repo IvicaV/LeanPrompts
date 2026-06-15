@@ -244,6 +244,13 @@ export default function Popup() {
                     if (Date.now() - payload.timestamp < 3600000) {
                         setVariableValues(prev => {
                             const merged = { ...prev };
+                            // Strip existing non-file variables first
+                            Object.keys(merged).forEach(k => {
+                                if (!k.startsWith('file:') && !k.startsWith('!file:')) {
+                                    delete merged[k];
+                                }
+                            });
+                            // Then merge the incoming text variables
                             Object.keys(payload.values).forEach(k => merged[k] = payload.values[k]);
                             return merged;
                         });
@@ -266,6 +273,24 @@ export default function Popup() {
                 try {
                     setVariableValues(prev => {
                         const merged = { ...prev };
+
+                        // --- SMART RESET: If payload values are completely empty, wipe all text variables! ---
+                        if (Object.keys(payload.values || {}).length === 0) {
+                            Object.keys(merged).forEach(k => {
+                                if (!k.startsWith('file:') && !k.startsWith('!file:')) {
+                                    delete merged[k];
+                                }
+                            });
+                            return merged;
+                        }
+
+                        // Strip existing non-file variables first
+                        Object.keys(merged).forEach(k => {
+                            if (!k.startsWith('file:') && !k.startsWith('!file:')) {
+                                delete merged[k];
+                            }
+                        });
+                        // Then merge the incoming text variables
                         Object.keys(payload.values).forEach(k => merged[k] = payload.values[k]);
                         return merged;
                     });
@@ -289,12 +314,13 @@ export default function Popup() {
 
             if (selectedPrompt && payload.promptId === selectedPrompt.id) {
                 // Lade geänderte Sitzungsdateien im Hintergrund
-                dbAPI.getSessionCache(selectedPrompt.id).then(async (cachedFilesMap) => {
-                    if (!cachedFilesMap) return;
+                dbAPI.getSessionCache(selectedPrompt.id).then(async (cachedFilesMapResult) => {
+                    const cachedFilesMap = cachedFilesMapResult || {};
                     const restoredValues = {};
                     const restoredStepFiles = {};
 
                     for (const [key, fList] of Object.entries(cachedFilesMap)) {
+                        if (!fList || !Array.isArray(fList)) continue;
                         const files = await Promise.all(fList.map(async (f) => {
                             if (f.isGhost || !f.data) return { name: f.name, type: f.type, size: f.size, isGhost: true };
                             try {
@@ -306,7 +332,8 @@ export default function Popup() {
                             }
                         }));
 
-                        if (key.startsWith('file:')) {
+                        const isFileVar = key.startsWith('file:') || key.startsWith('!file:');
+                        if (isFileVar) {
                             restoredValues[key] = files;
                         } else {
                             restoredStepFiles[key] = files;
@@ -316,6 +343,13 @@ export default function Popup() {
                     // Text-Variablen schützen und nur Dateivariablen im State aktualisieren
                     setVariableValues(prev => {
                         const next = { ...prev };
+                        // Proaktiv alte Dateivariablen entfernen
+                        Object.keys(next).forEach(k => {
+                            if (k.startsWith('file:') || k.startsWith('!file:')) {
+                                delete next[k];
+                            }
+                        });
+                        // Neue Dateivariablen einpflegen
                         Object.keys(restoredValues).forEach(k => {
                             next[k] = restoredValues[k];
                         });
@@ -1059,35 +1093,38 @@ export default function Popup() {
         // RESTORE LOGIC (Async!)
         if (keepValues) {
             try {
-                const data = await chrome.storage.local.get(['lp_last_session']);
-                const session = data.lp_last_session;
-
                 // 1. Dateien IMMER aus der IndexedDB laden, wenn vorhanden (Dashboard-Sync)
-                const cachedFilesMap = await dbAPI.getSessionCache(prompt.id);
-                if (cachedFilesMap) {
-                    for (const [key, fList] of Object.entries(cachedFilesMap)) {
-                        const files = await Promise.all(fList.map(async (f) => {
-                            if (f.isGhost || !f.data) {
-                                return { name: f.name, type: f.type, size: f.size, isGhost: true };
-                            }
-                            try {
-                                const res = await fetch(f.data);
-                                const blob = await res.blob();
-                                return new File([blob], f.name, { type: f.type });
-                            } catch (err) {
-                                return { name: f.name, type: f.type, size: f.size, isGhost: true };
-                            }
-                        }));
-
-                        if (key.startsWith('file:')) {
-                            restoredValues[key] = files;
-                        } else {
-                            restoredStepFiles[key] = files;
+                const cachedFilesMap = await dbAPI.getSessionCache(prompt.id) || {};
+                for (const [key, fList] of Object.entries(cachedFilesMap)) {
+                    if (!fList || !Array.isArray(fList)) continue;
+                    const files = await Promise.all(fList.map(async (f) => {
+                        if (f.isGhost || !f.data) {
+                            return { name: f.name, type: f.type, size: f.size, isGhost: true };
                         }
+                        try {
+                            const res = await fetch(f.data);
+                            const blob = await res.blob();
+                            return new File([blob], f.name, { type: f.type });
+                        } catch (err) {
+                            return { name: f.name, type: f.type, size: f.size, isGhost: true };
+                        }
+                    }));
+
+                    const isFileVar = key.startsWith('file:') || key.startsWith('!file:');
+                    if (isFileVar) {
+                        restoredValues[key] = files;
+                    } else {
+                        restoredStepFiles[key] = files;
                     }
                 }
+            } catch (e) {
+                console.warn("LeanPrompts: Failed to load files from IndexedDB in Popup:", e);
+            }
 
-                // 2. Text-Variablen nur laden, wenn die letzte aktive Sitzung übereinstimmt
+            try {
+                // 2. Text-Variablen nur laden, wenn die letzte aktive Sitzung übereinstimmt (Decoupled)
+                const data = await chrome.storage.local.get(['lp_last_session']);
+                const session = data.lp_last_session;
                 if (session && session.promptId === prompt.id) {
                     Object.keys(session.values || {}).forEach(k => {
                         if (!k.startsWith('file:') && !k.startsWith('!file:')) {
@@ -1096,7 +1133,7 @@ export default function Popup() {
                     });
                 }
             } catch (e) {
-                console.warn("LeanPrompts: Failed to restore session safely in Popup:", e);
+                console.warn("LeanPrompts: Failed to restore text session safely in Popup:", e);
             }
         }
 
@@ -1444,7 +1481,34 @@ export default function Popup() {
         else if (view === 'fill' && selectedPrompt) {
             const activeStep = stepsWithVariables.find(s => s.id === selectedStepId);
             textToUse = isShift ? null : (activeStep?.compiled || "");
-            filesToUse = isShift ? [] : (stepFiles[selectedStepId] || []);
+            filesToUse = isShift ? [] : [...(stepFiles[selectedStepId] || [])];
+
+            // --- INTEGRATION: Resolve and merge file-variables on raw content ---
+            if (!isShift && activeStep) {
+                const safeSnippets = snippets || [];
+                const resolvedContent = resolveSnippets(activeStep.content || "", safeSnippets);
+                const currentStepVars = parseVariables(resolvedContent) || [];
+                const cleanStepVars = currentStepVars.map(v => v.replace(/^!/, '').replace(/^!file:/i, 'file:'));
+
+                if (variableValues) {
+                    Object.keys(variableValues).forEach(key => {
+                        const cleanKey = key.replace(/^!/, '').replace(/^!file:/i, 'file:');
+                        if (cleanKey.startsWith('file:') && cleanStepVars.includes(cleanKey)) {
+                            const varFiles = variableValues[key];
+                            if (Array.isArray(varFiles)) {
+                                filesToUse.push(...varFiles);
+                            } else if (varFiles) {
+                                filesToUse.push(varFiles);
+                            }
+                        }
+                    });
+                }
+                // Deduplicate
+                filesToUse = filesToUse.filter((file, index, self) =>
+                    index === self.findIndex(f => f.name === file.name && f.size === file.size)
+                );
+            }
+            // --------------------------------------------------------------------
         } else if (activeSource === 'quick' && quickPrompt.trim()) {
             textToUse = isShift ? null : quickPrompt;
             filesToUse = isShift ? [] : quickPromptFiles;
