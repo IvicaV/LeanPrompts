@@ -77,17 +77,31 @@ chrome.storage.local.get(['dedicatedWindowId', 'sidebarWindowId']).then(data => 
   console.log("LeanPrompts: Restored targeting state:", { dedicatedBrowserWindowId, sidebarWindowId });
 });
 
-// Windows Cleanup: Clear IDs when windows are closed
-chrome.windows.onRemoved.addListener((windowId) => {
-  if (windowId === dedicatedBrowserWindowId) {
-    dedicatedBrowserWindowId = null;
-    chrome.storage.local.remove('dedicatedWindowId');
-    console.log("LeanPrompts: Dedicated browser window closed.");
-  }
-  if (windowId === sidebarWindowId) {
-    sidebarWindowId = null;
-    chrome.storage.local.remove('sidebarWindowId');
-    console.log("LeanPrompts: Sidebar window closed.");
+// Windows Cleanup: Clear IDs when windows are closed (Asynchronous Storage-Safe Sync)
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  try {
+    const data = await chrome.storage.local.get(['dedicatedWindowId', 'sidebarWindowId']);
+    const storedDedicatedId = data.dedicatedWindowId;
+    const storedSidebarId = data.sidebarWindowId;
+
+    if (windowId === storedDedicatedId) {
+      // Main window closed: close orphaned sidebar if it exists
+      if (storedSidebarId) {
+        chrome.windows.remove(storedSidebarId).catch(() => { /* Already closed by user or OS */ });
+      }
+      dedicatedBrowserWindowId = null;
+      sidebarWindowId = null;
+      await chrome.storage.local.set({ dedicatedWindowId: null, sidebarWindowId: null });
+      console.log("LeanPrompts: Dedicated browser window closed (Storage Sync).");
+    } else if (windowId === storedSidebarId) {
+      // Sidebar closed: clear targeting state
+      dedicatedBrowserWindowId = null;
+      sidebarWindowId = null;
+      await chrome.storage.local.set({ dedicatedWindowId: null, sidebarWindowId: null });
+      console.log("LeanPrompts: Sidebar window closed (Storage Sync).");
+    }
+  } catch (err) {
+    console.error("LeanPrompts: Error cleaning up window state on remove:", err);
   }
 });
 
