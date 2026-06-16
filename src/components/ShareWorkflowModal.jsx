@@ -25,6 +25,7 @@ import download from 'downloadjs';
 import { scanWorkflowDependencies } from '../utils/workflowScan';
 import useBodyLock from '../hooks/useBodyLock';
 import usePromptStore from '../stores/promptStore';
+import { dbAPI } from '../utils/db';
 
 export default function ShareWorkflowModal({ isOpen, onClose, prompt, snippets, knowledgeTiles }) {
     useBodyLock();
@@ -84,7 +85,7 @@ export default function ShareWorkflowModal({ isOpen, onClose, prompt, snippets, 
         setSelectedDependencies(newSet);
     };
 
-    const handleExport = () => {
+    const handleExport = async () => {
         setIsExporting(true);
         try {
             const promptToExport = JSON.parse(JSON.stringify(prompt));
@@ -127,7 +128,8 @@ export default function ShareWorkflowModal({ isOpen, onClose, prompt, snippets, 
             // Embed referenced collection to prevent orphaned reference crash in receiver side
             const embeddedCollections = [];
             try {
-                const { collections } = usePromptStore.getState();
+                // Direct database query bypassing Zustand state to prevent worker bundling crashes
+                const collections = await dbAPI.getAllCollections();
                 if (promptToExport.collectionId && collections) {
                     const col = collections.find(c => c.id === promptToExport.collectionId);
                     if (col) {
@@ -141,7 +143,7 @@ export default function ShareWorkflowModal({ isOpen, onClose, prompt, snippets, 
                     }
                 }
             } catch (e) {
-                console.warn("[Backup] Failed to fetch collections from store during export:", e);
+                console.warn("[Backup] Failed to fetch collections from database during export:", e);
             }
 
             const exportData = {

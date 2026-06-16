@@ -25,11 +25,34 @@ import {
     Sparkles, UploadCloud, File, X, Eraser, Info,
     Command, Eye, EyeOff, Lightbulb, Save, Trash2, AlertTriangle, Bookmark,
     Image as ImageIcon, FileText, FileJson, FileArchive, FileSpreadsheet, FileVideo, FileAudio, FileCode,
-    Pencil, ChevronDown, Check
+    Pencil, ChevronDown, Check, Plus
 } from 'lucide-react';
 import { parseVariables } from '../utils/variableParser';
 import { filterOversizedFiles, formatFileSize } from '../utils/formatFileSize';
 import { enableDragSelectScroll } from '../utils/scrollHelper';
+import ConfirmationModal from './ConfirmationModal';
+
+const isValueEqual = (val1, val2) => {
+    if (val1 === val2) return true;
+    if (!val1 && !val2) return true;
+    
+    const isArr1 = Array.isArray(val1);
+    const isArr2 = Array.isArray(val2);
+    if (isArr1 !== isArr2) return false;
+    
+    if (isArr1 && isArr2) {
+        if (val1.length !== val2.length) return false;
+        for (let i = 0; i < val1.length; i++) {
+            const f1 = val1[i];
+            const f2 = val2[i];
+            if (!f1 || !f2) return false;
+            if (f1.name !== f2.name || f1.size !== f2.size) return false;
+        }
+        return true;
+    }
+    
+    return String(val1) === String(val2);
+};
 
 function VariableInspector({
     variables,
@@ -381,6 +404,10 @@ function VariableInspector({
     const [presetPopupPos, setPresetPopupPos] = useState({ top: 0, left: 0 });
     const presetMenuRef = useRef(null);
 
+    // Overwrite Confirmation State
+    const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
+    const [pendingPresetName, setPendingPresetName] = useState('');
+
     // Track the last loaded or saved preset to enable rapid overwrites
     const [lastLoadedPreset, setLastLoadedPreset] = useState(null);
 
@@ -388,11 +415,38 @@ function VariableInspector({
     const [editingPresetName, setEditingPresetName] = useState(null);
     const [editPresetValue, setEditPresetValue] = useState('');
 
-    // Pre-fill helper: gives a default name so the user can just hit Enter
-    // Format: Preset DD.MM.YY HH:MM
+    // --- INTEGRITY DETECTOR: Vergleicht im Hintergrund die aktuellen Werte mit dem geladenen Preset ---
+    const isPresetDirty = useMemo(() => {
+        if (!lastLoadedPreset || !presets || !presets[lastLoadedPreset]) return false;
+        const loadedValues = presets[lastLoadedPreset].values || {};
+        
+        const variablesDirty = variables.some(v => {
+            const cleanV = v.replace(/^!/, '').replace(/^!file:/i, 'file:');
+            const activeVal = values[cleanV] !== undefined ? values[cleanV] : values[v];
+            const loadedVal = loadedValues[cleanV] !== undefined ? loadedValues[cleanV] : loadedValues[v];
+            
+            // Datei-Arrays vergleichen
+            if (Array.isArray(activeVal) && Array.isArray(loadedVal)) {
+                if (activeVal.length !== loadedVal.length) return true;
+                return activeVal.some((file, idx) => file.name !== loadedVal[idx]?.name || file.size !== loadedVal[idx]?.size);
+            }
+            return String(activeVal || "") !== String(loadedVal || "");
+        });
+
+        if (variablesDirty) return true;
+
+        // Global files vergleichen
+        const currentFiles = files || [];
+        const presetFiles = presets[lastLoadedPreset].files || [];
+        if (currentFiles.length !== presetFiles.length) return true;
+        if (currentFiles.some((file, idx) => file.name !== presetFiles[idx]?.name || file.size !== presetFiles[idx]?.size)) return true;
+
+        return false;
+    }, [lastLoadedPreset, presets, values, variables, files]);
+
     const handleStartSavingPreset = () => {
         if (lastLoadedPreset) {
-            setPresetName(lastLoadedPreset);
+            setPresetName(`${lastLoadedPreset} (Copy)`);
         } else {
             const now = new Date();
             const dd   = String(now.getDate()).padStart(2, '0');
@@ -427,11 +481,20 @@ function VariableInspector({
     }, [showPresets]);
 
     const handleSave = () => {
-        if (!presetName.trim()) return;
-        onSavePreset(presetName.trim());
-        setLastLoadedPreset(presetName.trim());
-        setPresetName('');
-        setIsSaving(false);
+        const trimmed = presetName.trim();
+        if (!trimmed) return;
+
+        if (presets && presets[trimmed]) {
+            // Konflikt erkannt: Öffne das Bestätigungs-Modal
+            setPendingPresetName(trimmed);
+            setShowOverwriteConfirm(true);
+        } else {
+            // Kein Konflikt: Normal speichern
+            onSavePreset(trimmed);
+            setLastLoadedPreset(trimmed);
+            setPresetName('');
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -439,79 +502,143 @@ function VariableInspector({
             <div className="p-4 border-b border-border bg-bg-surface shrink-0 flex items-center justify-between">
                 <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider">
                     Inspector
-                </h3>
-                
-                <div className="flex items-center gap-3 relative" ref={presetMenuRef}>
+                </h3>                <div className="flex items-center gap-1.5 relative" ref={presetMenuRef}>
                     {isSaving ? (
-                        <div className="flex items-center gap-2 bg-bg p-1 rounded-lg border border-border/50 shadow-xl animate-in fade-in slide-in-from-right-2 duration-300">
+                        // --- STATE 1: SPEICHER-DIALOG (Vermeidet Überlappungen) ---
+                        <div className="flex items-center gap-1 bg-bg p-1 rounded-lg border border-border/50 shadow-xl animate-in fade-in slide-in-from-right-2 duration-300">
                             <input
                                 type="text"
                                 placeholder="Preset Name..."
-                                className="w-36 bg-transparent px-2 py-0.5 text-[10px] text-text-main focus:outline-none"
+                                className="w-[120px] bg-transparent px-1 py-0.5 text-[10px] text-text-main focus:outline-none"
                                 value={presetName}
                                 onChange={(e) => setPresetName(e.target.value)}
                                 onFocus={(e) => e.target.select()}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') handleSave();
-                                    if (e.key === 'Escape') setIsSaving(false);
+                                    if (e.key === 'Escape') { setIsSaving(false); setPresetName(''); }
                                 }}
                                 autoFocus
                             />
-                            {/* Save icon — more compact than text, consistent with tool's icon language */}
                             <button
                                 onClick={handleSave}
                                 disabled={!presetName.trim()}
-                                className="text-primary dark:text-indigo-400 hover:text-primary-hover dark:hover:text-indigo-300 p-1 rounded transition-colors disabled:opacity-30"
-                                title="Save preset"
+                                className="text-primary dark:text-indigo-400 hover:text-primary-hover p-1 rounded transition-colors disabled:opacity-30"
+                                title="Confirm Save"
                             >
                                 <Save size={12} />
                             </button>
-                            <button onClick={() => setIsSaving(false)} className="text-text-muted hover:text-text-main">
-                                <X size={10} />
+                            <button 
+                                onClick={() => { setIsSaving(false); setPresetName(''); }} 
+                                className="text-text-muted hover:text-text-main p-1"
+                                title="Cancel"
+                            >
+                                <X size={12} />
                             </button>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-3">
-                             {presets && Object.keys(presets).length > 0 ? (
-                                <>
-                                    <button
-                                        onClick={(e) => {
-                                            if (showPresets) {
-                                                setShowPresets(false);
-                                            } else {
-                                                const rect = e.currentTarget.getBoundingClientRect();
-                                                const isFlipped = (window.innerHeight - rect.bottom) < 250;
-                                                
-                                                setPresetPopupPos({
-                                                    right: window.innerWidth - rect.right,
-                                                    ...(isFlipped 
-                                                        ? { bottom: window.innerHeight - rect.top + 4 } 
-                                                        : { top: rect.bottom + 4 })
-                                                });
-                                                setShowPresets(true);
-                                            }
-                                        }}
-                                        className={`text-[9px] font-bold uppercase tracking-widest transition-all ${showPresets ? 'text-primary' : 'text-text-faint hover:text-text-muted'}`}
-                                        title="Load previously saved text inputs and file attachments"
+                        // --- STATE 2, 3 & 4: CONTROL BAR (DOPPEL-AKTION MODUS) ---
+                        <div className="flex items-center gap-2 animate-in fade-in duration-200">
+                            {lastLoadedPreset ? (
+                                // STATE 2: EIN PRESET IST GELADEN (FOKUSSIERT AUF ZWEI AKTIONEN)
+                                <div className="flex items-center gap-1 bg-bg-elevated/40 border border-border/60 rounded-lg p-1">
+                                    <span 
+                                        className="text-[10px] text-text-muted truncate max-w-[90px] pl-1.5 font-bold select-none"
+                                        title={`${lastLoadedPreset}${isPresetDirty ? ' (modified)' : ''}`}
                                     >
-                                        {showPresets ? 'Close' : 'Load Preset'}
+                                        {lastLoadedPreset}{isPresetDirty && '*'}
+                                    </span>
+                                    
+                                    {isPresetDirty && (
+                                        <button
+                                            onClick={() => {
+                                                onSavePreset(lastLoadedPreset);
+                                                if (onNotification) onNotification(`Preset "${lastLoadedPreset}" updated!`, "success");
+                                            }}
+                                            className="p-1 hover:bg-bg rounded text-emerald-500 hover:text-emerald-400 transition-colors shrink-0 cursor-pointer"
+                                            title={`Update "${lastLoadedPreset}" with current changes (1-Click)`}
+                                        >
+                                            <Save size={12} />
+                                        </button>
+                                    )}
+
+                                    <button
+                                        onClick={handleStartSavingPreset}
+                                        className="p-1 hover:bg-bg rounded text-text-muted hover:text-primary transition-colors shrink-0 cursor-pointer"
+                                        title="Save as a new copy..."
+                                    >
+                                        <Plus size={12} />
                                     </button>
+                                    
+                                    {presets && Object.keys(presets).length > 1 && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (showPresets) {
+                                                    setShowPresets(false);
+                                                } else {
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    const isFlipped = (window.innerHeight - rect.bottom) < 250;
+                                                    setPresetPopupPos({
+                                                        right: window.innerWidth - rect.right,
+                                                        ...(isFlipped 
+                                                            ? { bottom: window.innerHeight - rect.top + 4 } 
+                                                            : { top: rect.bottom + 4 })
+                                                    });
+                                                    setShowPresets(true);
+                                                }
+                                            }}
+                                            className={`p-1 rounded hover:bg-bg-hover transition-all ${showPresets ? 'text-primary' : 'text-text-faint hover:text-text-muted'} cursor-pointer`}
+                                            title="Switch Preset"
+                                        >
+                                            <ChevronDown size={12} />
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                // KEIN PRESET GELADEN
+                                presets && Object.keys(presets).length > 0 ? (
+                                    // STATE 3: PRESETS EXISTIEREN (DRAFT MODUS)
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (showPresets) {
+                                                    setShowPresets(false);
+                                                } else {
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    const isFlipped = (window.innerHeight - rect.bottom) < 250;
+                                                    setPresetPopupPos({
+                                                        right: window.innerWidth - rect.right,
+                                                        ...(isFlipped 
+                                                            ? { bottom: window.innerHeight - rect.top + 4 } 
+                                                            : { top: rect.bottom + 4 })
+                                                    });
+                                                    setShowPresets(true);
+                                                }
+                                            }}
+                                            className={`text-[9px] font-bold uppercase tracking-widest transition-all flex items-center gap-1 ${showPresets ? 'text-primary' : 'text-text-faint hover:text-text-muted'} cursor-pointer`}
+                                            title="Load previously saved text inputs and file attachments"
+                                        >
+                                            Load Preset <ChevronDown size={10} className="shrink-0" />
+                                        </button>
+                                        <button
+                                            onClick={handleStartSavingPreset}
+                                            className="text-[9px] font-bold uppercase tracking-widest text-text-faint hover:text-text-muted transition-all"
+                                            title="Save current variables and files as a new preset"
+                                        >
+                                            Save
+                                        </button>
+                                    </div>
+                                ) : (
+                                    // STATE 4: KEINE PRESETS EXISTIEREN
                                     <button
                                         onClick={handleStartSavingPreset}
                                         className="text-[9px] font-bold uppercase tracking-widest text-text-faint hover:text-text-muted transition-all"
-                                        title="Save current variables and files as a new preset"
+                                        title="Save current variables and files as a reusable preset"
                                     >
-                                        Save
+                                        Save as Preset
                                     </button>
-                                </>
-                            ) : (
-                                <button
-                                    onClick={handleStartSavingPreset}
-                                    className="text-[9px] font-bold uppercase tracking-widest text-text-faint hover:text-text-muted transition-all"
-                                    title="Save current variables and files as a reusable preset"
-                                >
-                                    Save as Preset
-                                </button>
+                                )
                             )}
                         </div>
                     )}
@@ -565,9 +692,16 @@ function VariableInspector({
                                                 <span
                                                     className="text-[10px] text-text-muted group-hover:text-text-main truncate flex-1 font-medium"
                                                     onClick={() => {
-                                                        setLastLoadedPreset(name);
-                                                        onLoadPreset(name);
-                                                        setShowPresets(false);
+                                                        if (isSaving) {
+                                                            // Im Speicher-Modus: Nur den Namen ins Eingabefeld übernehmen (Überschreib-Ziel)
+                                                            setPresetName(name);
+                                                            setShowPresets(false);
+                                                        } else {
+                                                            // Im Normal-Modus: Preset wie gewohnt laden
+                                                            setLastLoadedPreset(name);
+                                                            onLoadPreset(name);
+                                                            setShowPresets(false);
+                                                        }
                                                     }}
                                                 >
                                                     {name}
@@ -1151,6 +1285,26 @@ function VariableInspector({
                     </div>
                 </div>
             </div>
+
+            {/* LOCAL OVERWRITE CONFIRMATION MODAL */}
+            <ConfirmationModal
+                isOpen={showOverwriteConfirm}
+                title="Overwrite Preset?"
+                message={`A preset named "${pendingPresetName}" already exists. Do you want to overwrite it with your current values?`}
+                confirmText="Yes, Overwrite"
+                isDangerous={true}
+                onConfirm={() => {
+                    onSavePreset(pendingPresetName);
+                    setLastLoadedPreset(pendingPresetName);
+                    setPresetName('');
+                    setIsSaving(false);
+                    setShowOverwriteConfirm(false);
+                    if (onNotification) onNotification(`Preset "${pendingPresetName}" updated successfully!`, "success");
+                }}
+                onClose={() => {
+                    setShowOverwriteConfirm(false);
+                }}
+            />
         </div>
     );
 }

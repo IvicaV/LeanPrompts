@@ -70,11 +70,21 @@ async function releaseReinjectionGuard(tabId) {
   await chrome.storage.session.remove(`guard_${tabId}`);
 }
 
-// Load persisted IDs on startup
-chrome.storage.local.get(['dedicatedWindowId', 'sidebarWindowId']).then(data => {
-  dedicatedBrowserWindowId = data.dedicatedWindowId || null;
-  sidebarWindowId = data.sidebarWindowId || null;
-  console.log("LeanPrompts: Restored targeting state:", { dedicatedBrowserWindowId, sidebarWindowId });
+// Load persisted IDs on startup (Defensive Alive Validation to prevent stale targeting states)
+chrome.storage.local.get(['dedicatedWindowId', 'sidebarWindowId']).then(async (data) => {
+  const dedicatedAlive = data.dedicatedWindowId ? await validateTargetWindow(data.dedicatedWindowId) : false;
+  const sidebarAlive = data.sidebarWindowId ? await validateTargetWindow(data.sidebarWindowId) : false;
+
+  dedicatedBrowserWindowId = dedicatedAlive ? data.dedicatedWindowId : null;
+  sidebarWindowId = sidebarAlive ? data.sidebarWindowId : null;
+
+  if ((data.dedicatedWindowId && !dedicatedAlive) || (data.sidebarWindowId && !sidebarAlive)) {
+    await chrome.storage.local.set({
+      dedicatedWindowId: dedicatedBrowserWindowId,
+      sidebarWindowId: sidebarWindowId
+    });
+  }
+  console.log("LeanPrompts: Restored validated targeting state:", { dedicatedBrowserWindowId, sidebarWindowId });
 });
 
 // Windows Cleanup: Clear IDs when windows are closed (Asynchronous Storage-Safe Sync)

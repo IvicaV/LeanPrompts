@@ -21,6 +21,7 @@
  */
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import usePromptStore from '../../stores/promptStore';
+import { requestStoragePersistence } from '../../utils/storagePersistence';
 import {
     Search, Command, ArrowLeft, Copy, Check, Send, ExternalLink,
     Github, LayoutGrid, Sparkles, Settings, Info, UploadCloud,
@@ -194,6 +195,7 @@ export default function Popup() {
 
     // --- 2. INITIALIZATION ---
     useEffect(() => {
+        requestStoragePersistence(); // Safely request persistence post-mount
         loadPrompts();
         checkContext();
         checkPersistentSelection(); // Check if a manual selection was made while popup was closed

@@ -22,6 +22,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { formatLeanText } from '../../utils/leanFormat';
 import usePromptStore from '../../stores/promptStore';
+import { requestStoragePersistence } from '../../utils/storagePersistence';
 import {
   Plus, Command, LayoutGrid, Settings, Trash2, Eye, EyeOff,
   History, Sparkles, Save, Check, Hash, X, Share2, Github, Coffee,
@@ -318,12 +319,14 @@ export default function Dashboard() {
     const hydrateFiles = async () => {
       try {
         // Parallelisiertes Laden für maximale Performance und Latenz-Schutz (Unter 1ms)
-        const [cachedFilesMap, storageData] = await Promise.all([
-          dbAPI.getSessionCache(activePromptId) || {},
+        const [cachedFilesMapResult, storageData] = await Promise.all([
+          dbAPI.getSessionCache(activePromptId),
           chrome.storage.local.get(['lp_last_session'])
         ]);
 
         if (!isCurrent) return;
+
+        const cachedFilesMap = cachedFilesMapResult || {};
 
         const activeKey = activeStepId || (prompts.find(p => p.id === activePromptId)?.chain?.[0]?.id) || activePromptId;
         const tempCache = {};
@@ -1051,6 +1054,7 @@ const initiateWorkflow = async (promptId) => {
 
   useEffect(() => {
     const init = async () => {
+      requestStoragePersistence(); // Safely request persistence post-mount
       await loadPrompts();
 
       // Theme Init (Storage -> System -> Default)

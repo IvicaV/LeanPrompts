@@ -23,12 +23,20 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import Dashboard from './Dashboard'
 import '../../styles/globals.css'
-import { initTheme } from '../../utils/themeInit'
-import { requestStoragePersistence } from '../../utils/storagePersistence'
 
-// Initialize Theme immediately before React mounts to prevent flash
-initTheme();
-requestStoragePersistence();
+// Inline Theme-Prüfung zur Vermeidung von Shared Chunks und FOUC
+try {
+  const storedTheme = localStorage.getItem('theme');
+  const isDark = storedTheme 
+    ? storedTheme === 'dark' 
+    : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
+  document.documentElement.classList.toggle('dark', isDark);
+  document.documentElement.classList.toggle('light', !isDark);
+  document.documentElement.style.backgroundColor = isDark ? '#09090b' : '#ffffff';
+} catch (e) {
+  document.documentElement.classList.add('dark');
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
