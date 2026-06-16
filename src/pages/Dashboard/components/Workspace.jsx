@@ -366,10 +366,16 @@ export default function Workspace({
         }
     }, [activePrompt?.id, activePrompt?.tags, activePrompt?.collectionId, backlinks.length]);
 
-    // Auto-focus on title field when creating a new prompt
+    // Auto-focus on title field when creating a new prompt (Defensive & Lifecycle-Safe)
     React.useEffect(() => {
-        if (activePrompt && activePrompt.title === "Untitled Prompt" && !localEditorContent) {
-            setTimeout(() => titleInputRef.current?.focus({ preventScroll: true }), 50);
+        const firstStepContent = activePrompt?.chain?.[0]?.content || "";
+        if (activePrompt && activePrompt.title === "Untitled Prompt" && !firstStepContent.trim()) {
+            setTimeout(() => {
+                if (titleInputRef.current) {
+                    titleInputRef.current.focus({ preventScroll: true });
+                    titleInputRef.current.select(); // Markiert den Text zur direkten Überschreibung
+                }
+            }, 150); // 150ms fängt Render- und Animations-Latenzen des Browsers stabil ab
         }
     }, [activePrompt?.id]);
 
