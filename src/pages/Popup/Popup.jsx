@@ -2599,10 +2599,11 @@ export default function Popup() {
 
                                                                                     <div
                                                                                         data-droppable="true"
-                                                                                        className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-all duration-200 ${
+                                                                                        title={`Add files for "${displayName}"`}
+                                                                                        className={`outline-none group/dropzone border-2 border-dashed rounded-xl px-4 relative flex items-center justify-center min-h-[56px] cursor-pointer overflow-hidden transition-all duration-200 ${
                                                                                             isHighlighted ? themeClass : draggingVars[v.name]
-                                                                                                ? 'border-primary bg-primary/10 scale-[1.02] shadow-lg shadow-primary/5'
-                                                                                                : 'border-border hover:bg-bg-elevated hover:border-primary/50'
+                                                                                                ? 'border-indigo-500 bg-indigo-500/10 scale-[1.02] shadow-lg shadow-indigo-500/5'
+                                                                                                : 'border-zinc-300 dark:border-white/25 hover:border-indigo-500/50 dark:hover:border-white/40 hover:bg-indigo-50/50 dark:hover:bg-white/5'
                                                                                         }`}
                                                                                         onDragOver={e => e.preventDefault()}
                                                                                         onDragEnter={e => {
@@ -2647,9 +2648,21 @@ export default function Popup() {
                                                                                             input.click();
                                                                                         }}
                                                                                     >
-                                                                                        <div className={`text-[10px] uppercase tracking-wider font-bold pointer-events-none transition-colors ${draggingVars[v.name] ? 'text-primary' : 'text-text-muted'}`}>
+                                                                                        {/* Haupttext: Immer exakt mittig, gleitet bei Hover nach oben */}
+                                                                                        <span className={`text-[10px] uppercase tracking-wider font-bold truncate w-full pointer-events-none transition-all duration-300 text-center ${
+                                                                                            draggingVars[v.name] 
+                                                                                                ? 'text-indigo-500 scale-105' 
+                                                                                                : 'text-text-muted group-hover/dropzone:-translate-y-2'
+                                                                                        }`}>
                                                                                             {draggingVars[v.name] ? "Drop files now!" : `+ Add files for "${displayName}"`}
-                                                                                        </div>
+                                                                                        </span>
+
+                                                                                        {/* Subtext: Absolut unten positioniert, fadet sanft ein */}
+                                                                                        {!draggingVars[v.name] && (
+                                                                                            <span className="absolute bottom-2 left-0 right-0 text-[9px] font-medium text-text-faint/60 opacity-0 group-hover/dropzone:opacity-100 transition-opacity duration-300 pointer-events-none text-center">
+                                                                                                Click, drop, or hover & Ctrl+V
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
                                                                                 </div>
                                                                             ) : isDropdown ? (
@@ -2848,9 +2861,9 @@ export default function Popup() {
                                 </div>
 
                                 <div
-                                    className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all duration-200 ${isDragging
-                                        ? 'border-primary bg-primary/10 scale-[1.02] shadow-lg shadow-primary/5'
-                                        : 'border-border hover:bg-bg-elevated hover:border-primary/50'
+                                    className={`outline-none group/globaldrop border-2 border-dashed rounded-xl px-4 relative flex items-center justify-center min-h-[56px] cursor-pointer overflow-hidden transition-all duration-200 ${isDragging
+                                        ? 'border-indigo-500 bg-indigo-500/10 scale-[1.02] shadow-lg shadow-indigo-500/5'
+                                        : 'border-zinc-300 dark:border-white/25 hover:border-indigo-500/50 dark:hover:border-white/40 hover:bg-indigo-50/50 dark:hover:bg-white/5'
                                         }`}
                                     onDragOver={e => e.preventDefault()}
                                     onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
@@ -2875,9 +2888,21 @@ export default function Popup() {
                                     }}
                                     onClick={() => fileInputRef.current?.click()}
                                 >
-                                    <div className={`text-xs pointer-events-none transition-colors ${isDragging ? 'text-primary font-bold' : 'text-text-muted'}`}>
-                                        {isDragging ? "Drop files now!" : "Drag files here or click to upload"}
-                                    </div>
+                                    {/* Haupttext: Immer exakt mittig, gleitet bei Hover nach oben */}
+                                    <span className={`text-xs font-bold transition-all duration-300 pointer-events-none text-center ${
+                                        isDragging 
+                                            ? 'text-indigo-500 scale-105' 
+                                            : 'text-text-muted group-hover/globaldrop:-translate-y-2'
+                                    }`}>
+                                        {isDragging ? "Drop files now!" : "Upload Attachments"}
+                                    </span>
+                                    
+                                    {/* Subtext: Absolut unten positioniert, fadet sanft ein */}
+                                    {!isDragging && (
+                                        <span className="absolute bottom-2 left-0 right-0 text-[9px] font-medium text-text-faint/60 opacity-0 group-hover/globaldrop:opacity-100 transition-opacity duration-300 pointer-events-none text-center">
+                                            Click, drag & drop, or hover & Ctrl+V
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 

@@ -959,8 +959,8 @@ function VariableInspector({
                                                 data-lp-focus-target="true"
                                                 title={`Add files for "${displayName}"`}
                                                 className={`outline-none group/dropzone border-2 border-dashed rounded-xl px-4 relative flex items-center justify-center min-h-[56px] cursor-pointer overflow-hidden transition-all duration-200 ${draggingVars[variable]
-                                                        ? 'border-primary bg-primary/10 scale-[1.02] shadow-lg shadow-primary/5'
-                                                        : 'border-border/40 dark:border-white/25 hover:border-primary/40 dark:hover:border-white/40 hover:bg-primary/5 dark:hover:bg-white/5'
+                                                        ? 'border-indigo-500 bg-indigo-500/10 scale-[1.02] shadow-lg shadow-indigo-500/5'
+                                                        : 'border-zinc-300 dark:border-white/25 hover:border-indigo-500/50 dark:hover:border-white/40 hover:bg-indigo-50/50 dark:hover:bg-white/5'
                                                     } ${isHighlighted ? themeClass : ''}`}
                                                 onDragOver={e => e.preventDefault()}
                                                 onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setDraggingVars(prev => ({ ...prev, [variable]: true })); }}
@@ -1044,7 +1044,7 @@ function VariableInspector({
                                                 {/* Haupttext: Immer exakt mittig, gleitet bei Hover nach oben */}
                                                 <span className={`text-[10px] uppercase tracking-wider font-bold truncate w-full pointer-events-none transition-all duration-300 text-center ${
                                                     draggingVars[variable] 
-                                                        ? 'text-primary scale-105' 
+                                                        ? 'text-indigo-500 scale-105' 
                                                         : 'text-text-muted group-hover/dropzone:-translate-y-2'
                                                 }`}>
                                                     {draggingVars[variable] ? "Drop files now!" : `+ Add files for "${displayName}"`}
@@ -1156,8 +1156,8 @@ function VariableInspector({
 
                         <div
                             className={`group/globaldrop border-2 border-dashed rounded-xl px-4 relative flex items-center justify-center min-h-[56px] cursor-pointer overflow-hidden transition-all duration-200 ${isDragging
-                                ? 'border-primary bg-primary/10 scale-[1.02] shadow-lg shadow-primary/5'
-                                : 'border-border/40 dark:border-white/25 hover:border-primary/40 dark:hover:border-white/40 hover:bg-primary/5 dark:hover:bg-white/5'
+                                ? 'border-indigo-500 bg-indigo-500/10 scale-[1.02] shadow-lg shadow-indigo-500/5'
+                                : 'border-zinc-300 dark:border-white/25 hover:border-indigo-500/50 dark:hover:border-white/40 hover:bg-indigo-50/50 dark:hover:bg-white/5'
                                 }`}
                             onDragOver={e => e.preventDefault()}
                             onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
@@ -1223,7 +1223,7 @@ function VariableInspector({
                             {/* Haupttext: Immer exakt mittig, gleitet bei Hover nach oben */}
                             <span className={`text-xs font-bold transition-all duration-300 pointer-events-none text-center ${
                                 isDragging 
-                                    ? 'text-primary scale-105' 
+                                    ? 'text-indigo-500 scale-105' 
                                     : 'text-text-muted group-hover/globaldrop:-translate-y-2'
                             }`}>
                                 {isDragging ? "Drop files now!" : "Upload Attachments"}
