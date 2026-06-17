@@ -117,3 +117,26 @@ export const replaceLeanLinksOutsideCode = (text, snippets = []) => {
         return res;
     }).join("");
 };
+
+/**
+ * Sicherer URL-Sanitizer für die react-markdown Pipeline (Robust Pattern).
+ * Erlaubt ausschließlich sichere Web-Protokolle sowie interne Routing-Schemata.
+ * Blockiert bösartige Injektionen wie javascript:, vbscript: oder data:text/html.
+ */
+export const safeUrlTransform = (uri) => {
+  if (!uri) return '';
+  const cleanUri = uri.trim();
+  
+  // 1. Erlaube interne Verknüpfungen von LeanPrompts
+  if (/^(prompt|snippet|kb):/i.test(cleanUri)) {
+    return cleanUri;
+  }
+  
+  // 2. Erlaube sichere Standard-Web-Protokolle
+  if (/^(https?|mailto):/i.test(cleanUri)) {
+    return cleanUri;
+  }
+  
+  // 3. Verwerfe alle unsicheren Protokolle
+  return '';
+};

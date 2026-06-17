@@ -41,7 +41,7 @@ import { compressImage } from '../../../utils/imageCompression';
 import MultiTaggerModal from '../../../components/MultiTaggerModal';
 import CodeBlock from './CodeBlock';
 import DynamicTagList from '../../../components/DynamicTagList';
-import { formatLeanText, replaceLeanLinksOutsideCode } from '../../../utils/leanFormat';
+import { formatLeanText, replaceLeanLinksOutsideCode, safeUrlTransform } from '../../../utils/leanFormat';
 import { stripComments } from '../../../utils/variableParser';
 import { styleTags, tags } from '@lezer/highlight';
 import { leanBaseTheme, leanSyntaxHighlighting } from '../../../utils/editorTheme';
@@ -1116,11 +1116,7 @@ export default function KnowledgeTileEditor({
                                 <MarkdownErrorBoundary>
                                     <ReactMarkdown
                                         remarkPlugins={[remarkGfm, remarkBreaks]}
-                                        urlTransform={(uri) => {
-                                            if (uri.startsWith('prompt:')) return uri;
-                                            return uri;
-                                        }}
-                                        transformLinkUri={null} // Allow custom schemes
+                                        urlTransform={safeUrlTransform}
                                         rehypePlugins={[]} // Ensure no conflicting plugins
                                         components={{
                                             table: ({node, ...props}) => (
@@ -1361,7 +1357,7 @@ export default function KnowledgeTileEditor({
                                 <MarkdownErrorBoundary>
                                     <ReactMarkdown
                                         remarkPlugins={[remarkGfm, remarkBreaks]}
-                                        urlTransform={(uri) => { if (uri.startsWith('prompt:')) return uri; return uri; }}
+                                        urlTransform={safeUrlTransform}
                                         components={{
                                             pre: ({ node, ...props }) => <>{props.children}</>,
                                             code: (props) => <CodeBlock {...props} collectionColor={collections.find(c => c.id === localCollectionId)?.color || null} />,

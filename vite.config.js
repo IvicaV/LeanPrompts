@@ -21,6 +21,12 @@ const manifest = defineManifest({
   host_permissions: [
     "*://*/*"
   ],
+  externally_connectable: {
+    matches: [
+      "https://leanprompts-website.vercel.app/*",
+      "https://leanprompts.app/*"
+    ]
+  },
   commands: {
     "_execute_action": {
       "suggested_key": {
@@ -61,7 +67,25 @@ const manifest = defineManifest({
   content_scripts: [
     {
       matches: [
-        "*://*/*"
+        "*://chatgpt.com/*",
+        "*://chat.openai.com/*",
+        "*://claude.ai/*",
+        "*://gemini.google.com/*",
+        "*://aistudio.google.com/*",
+        "*://*.perplexity.ai/*",
+        "*://chat.deepseek.com/*",
+        "*://kimi.moonshot.cn/*",
+        "*://*.kimi.com/*",
+        "*://*.kimi.ai/*",
+        "*://grok.com/*",
+        "*://x.com/*",
+        "*://*.mistral.ai/*",
+        "*://*.bing.com/images/create*",
+        "*://*.bing.com/create*",
+        "*://*.bing.com/search*",
+        "*://chat.z.ai/*",
+        "*://agent.minimax.io/*",
+        "*://*.meta.ai/*"
       ],
       js: ["src/content/main.js"],
       run_at: "document_start",

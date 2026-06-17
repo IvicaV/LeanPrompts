@@ -38,7 +38,7 @@ import DynamicTagList from '../../../components/DynamicTagList';
 import SearchInput from '../../../components/SearchInput';
 import usePromptStore from '../../../stores/promptStore';
 import ActiveFilterBar from '../../../components/ActiveFilterBar';
-import { formatLeanText, replaceLeanLinksOutsideCode } from '../../../utils/leanFormat';
+import { formatLeanText, replaceLeanLinksOutsideCode, safeUrlTransform } from '../../../utils/leanFormat';
 import { stripComments, compilePrompt, resolveSnippets } from '../../../utils/variableParser';
 import { getCollectionTintStyle, getCollectionListRowStyle } from '../../../utils/collectionColors';
 
@@ -431,11 +431,7 @@ const Tile = React.memo(function Tile({
           <MarkdownErrorBoundary>
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkBreaks]}
-              urlTransform={(uri) => {
-                if (uri.startsWith('prompt:')) return uri;
-                return uri;
-              }}
-              transformLinkUri={null}
+              urlTransform={safeUrlTransform}
               rehypePlugins={[]}
               components={{
                   table: ({node, ...props}) => (

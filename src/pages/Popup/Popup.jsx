@@ -197,7 +197,14 @@ export default function Popup() {
     useEffect(() => {
         requestStoragePersistence(); // Safely request persistence post-mount
         loadPrompts();
-        checkContext();
+
+        // 1. ASYNCHRONES PROBING über activeTab
+        // Bereitet ungelistete Registerkarten im Hintergrund vor
+        chrome.runtime.sendMessage({ action: "PREPARE_ACTIVE_TAB" }, () => {
+            // Führe den Kompatibilitätscheck erst nach dem Probing aus
+            checkContext(false);
+        });
+
         checkPersistentSelection(); // Check if a manual selection was made while popup was closed
 
         // Load Onboarding Status

@@ -38,6 +38,59 @@ import { SEED_PROMPTS, SEED_SNIPPETS } from './utils/seedData';
 import { Adapters } from './engine_core/adapters';
 import { backupManager } from './utils/backup';
 
+// --- DYNAMIC CONTENT SCRIPT INJECTION HELPER ---
+async function ensureContentScriptActive(tabId) {
+  try {
+    // 1. Sende eine Testnachricht, um zu prüfen ob das Skript bereits geladen ist
+    const isActive = await new Promise(resolve => {
+      chrome.tabs.sendMessage(tabId, { action: "PING" }, (response) => {
+        if (chrome.runtime.lastError) resolve(false);
+        else resolve(response && (response.status === "ACK" || response.status === "PONG"));
+      });
+      setTimeout(() => resolve(false), 150);
+    });
+
+    if (isActive) return true;
+
+    // 2. Falls inaktiv, lade das Skript über die scripting-API dynamisch nach
+    const manifest = chrome.runtime.getManifest();
+    const contentScript = manifest.content_scripts?.[0]?.js?.[0];
+    
+    if (contentScript) {
+      await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        files: [contentScript]
+      });
+      // Kurze Pause für die Registrierung des Skripts
+      await new Promise(r => setTimeout(r, 150));
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn(`LeanPrompts: Dynamic injection failed for tab ${tabId}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Validiert die Struktur eines eingehenden externen Workflows defensiv.
+ * Verhindert, dass korrupte Daten in die IndexedDB geschrieben werden.
+ */
+function validateWorkflowPayload(data) {
+  if (!data || typeof data !== 'object') return false;
+  
+  // Ein valider Workflow-Import benötigt zwingend ein Prompt-Objekt mit ID und Titel
+  const prompt = data.prompt;
+  if (!prompt || typeof prompt !== 'object') return false;
+  if (typeof prompt.id !== 'string' || typeof prompt.title !== 'string') return false;
+  
+  // Die optionalen Arrays für Snippets und KnowledgeBase müssen, falls vorhanden, Arrays sein
+  if (data.snippets && !Array.isArray(data.snippets)) return false;
+  if (data.knowledgeBase && !Array.isArray(data.knowledgeBase)) return false;
+  
+  return true;
+}
+
 // GLOBAL STATE FOR SPLIT SCREEN TARGETING
 let dedicatedBrowserWindowId = null;
 let sidebarWindowId = null;
@@ -1113,6 +1166,43 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
     }
 
+    if (request.action === "PREPARE_ACTIVE_TAB") {
+      (async () => {
+        try {
+          let targetWinId = dedicatedBrowserWindowId;
+          if (!targetWinId) {
+            const storageData = await chrome.storage.local.get(['dedicatedWindowId']);
+            targetWinId = storageData.dedicatedWindowId || null;
+          }
+
+          if (targetWinId) {
+            const isAlive = await validateTargetWindow(targetWinId);
+            if (!isAlive) targetWinId = null;
+          }
+
+          const queryOptions = targetWinId
+            ? { active: true, windowId: targetWinId }
+            : { active: true, currentWindow: true };
+
+          const tabs = await chrome.tabs.query(queryOptions);
+          let finalTab = tabs[0];
+          
+          if (!finalTab && targetWinId) {
+            const fallbackTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            finalTab = fallbackTabs[0];
+          }
+
+          if (finalTab) {
+            await ensureContentScriptActive(finalTab.id);
+          }
+          sendResponse({ success: true });
+        } catch (e) {
+          sendResponse({ success: false, error: e.message });
+        }
+      })();
+      return true;
+    }
+
     if (request.action === "MANUAL_SELECTION_SUCCESS") {
       // Persistent storage for when popup is closed during selection
       const tabId = sender.tab?.id;
@@ -1147,9 +1237,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           const cleanUrl = url.trim();
 
-          // 2. Protokoll-Blacklist (Schützt vor XSS, lässt localhost und Intranet-IPs intakt)
-          if (/^(javascript|data|vbscript|file):/i.test(cleanUrl)) {
-            sendResponse({ success: false, error: "Unsafe protocol rejected" });
+          // --- DEFENSIBER PROTOKOLL-RESOLVER (ROBUST PATTERN) ---
+          // 1. Protokoll-Ergänzung für unvollständige Eingaben (verhindert Parser-Abstürze)
+          let finalUrl = cleanUrl;
+          if (!/^https?:\/\//i.test(finalUrl)) {
+            if (/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/i.test(finalUrl)) {
+              finalUrl = `http://${finalUrl}`;
+            } else {
+              finalUrl = `https://${finalUrl}`;
+            }
+          }
+
+          // 2. Parser-Validierung über eine strikte Allowlist
+          try {
+            const urlObj = new URL(finalUrl);
+            if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
+              sendResponse({ success: false, error: "Unsafe protocol rejected. Only HTTP/HTTPS URLs are allowed." });
+              return;
+            }
+          } catch (e) {
+            sendResponse({ success: false, error: "Unsafe or invalid URL structure." });
             return;
           }
 
@@ -1168,7 +1275,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const newLlm = { 
             id: crypto.randomUUID(), 
             name: cleanName, 
-            url: cleanUrl 
+            url: finalUrl // Verwende finalUrl anstelle von cleanUrl
           };
           
           await chrome.storage.local.set({ custom_llms: [...currentLlms, newLlm] });
@@ -1241,6 +1348,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 let targetUrl = url;
 
                 if (!shouldResetContext) {
+                  await ensureContentScriptActive(targetTab.id);
                   const check = await new Promise(resolve => {
                     chrome.tabs.sendMessage(targetTab.id, { action: "CHECK_COMPATIBILITY_v105" }, (response) => {
                       if (chrome.runtime.lastError) resolve(null);
@@ -1470,6 +1578,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           if (finalTab) {
             chrome.windows.update(finalTab.windowId, { focused: true });
+            await ensureContentScriptActive(finalTab.id);
             await waitForContentScript(finalTab.id);
             const result = await performInjection(finalTab.id, { action: "INJECT_PROMPT_v105", text, files });
             sendResponse(result);
@@ -1705,10 +1814,10 @@ chrome.windows.onRemoved.addListener((windowId) => {
 // src/background.js (Hinzufügen am Ende der Datei)
 // --- INTEGRATION: WEB-TO-EXTENSION INJEKTIONS-BRÜCKE ---
 chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
-  // Sicherheits-Check: Nur Anfragen von Ihren registrierten Domains erlauben
+  // 1. Origin-Verifizierung (Ausschließlich HTTPS-Produktions- und Staging-Domains)
   const allowedOrigins = [
-    "https://leanprompts-website.vercel.app", 
-    "http://localhost:4321"
+    "https://leanprompts-website.vercel.app",
+    "https://leanprompts.app"
   ];
   
   if (!allowedOrigins.includes(sender.origin)) {
@@ -1721,28 +1830,33 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
       try {
         const workflowData = request.data;
         
-        // 1. Hole alle aktuellen Prompts und Snippets aus der lokalen IndexedDB
+        // 2. Schema-Validierung vor jeder weiteren Verarbeitung
+        if (!validateWorkflowPayload(workflowData)) {
+          sendResponse({ success: false, error: "INVALID_SCHEMA: Malformed workflow payload." });
+          return;
+        }
+
+        // 3. Konflikt-Ermittlung im aktuellen Datenbestand
         const prompts = await dbAPI.getAllPrompts();
         const snippets = await dbAPI.getAllSnippets();
 
-        // 2. Konflikt-Check: Prüfe, ob importierte Snippets bereits lokal existieren
         const conflicts = { snippets: [], knowledge: [] };
-        if (workflowData.snippets) {
+        if (workflowData.snippets && Array.isArray(workflowData.snippets)) {
           workflowData.snippets.forEach(incoming => {
             const existing = snippets.find(s => s.name === incoming.name);
             if (existing) conflicts.snippets.push({ incoming, existing });
           });
         }
 
-        // 3. Importiere die Daten atomar über die bestehende Import-Pipeline der Extension
+        // 4. Import über den backupManager ausführen
         await backupManager.performWorkflowImport(workflowData, conflicts, () => {});
         
         sendResponse({ success: true, message: "Workflow successfully imported!" });
       } catch (err) {
         console.error("LeanPrompts: External import failed", err);
-        sendResponse({ success: false, error: err.message });
+        sendResponse({ success: false, error: "Import failed: " + err.message });
       }
     })();
-    return true; // Hält den asynchronen Antwortkanal für sendResponse offen
+    return true; // Hält den asynchronen Antwortkanal offen
   }
 });
