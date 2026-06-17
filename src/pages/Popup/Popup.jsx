@@ -876,9 +876,20 @@ export default function Popup() {
     const handleHardConnect = async (tab) => {
         setIsConnecting(true);
 
+        // --- DEFENSIVER WATCHDOG TIMER (ROBUST PATTERN) ---
+        // Garantiert, dass der Lade-Spinner nach 4s gestoppt wird,
+        // selbst wenn der Browser den asynchronen Callback verschluckt.
+        const watchdog = setTimeout(() => {
+            setIsConnecting(false);
+            setConnectHelpReason("CONNECTION_TIMEOUT");
+            setShowConnectHelp(true);
+        }, 4000);
+
         try {
-            // 1. Try standard message again just in case
             chrome.tabs.sendMessage(tab.id, { action: "CHECK_COMPATIBILITY_v105" }, async (response) => {
+                // Callback erhalten -> Watchdog sofort stoppen!
+                clearTimeout(watchdog);
+
                 const lastErr = chrome.runtime.lastError;
 
                 if (!lastErr && response?.hasInput) {
@@ -887,14 +898,14 @@ export default function Popup() {
                     return;
                 }
 
-                // 2. FAILED -> Attempt "Direct Probe" (Can we inject at all?)
+                // 2. FEHLGESCHLAGEN -> Dynamische Probe starten
                 try {
                     await chrome.scripting.executeScript({
                         target: { tabId: tab.id },
                         func: () => { return !!document.body; }
                     });
 
-                    // PROBE SUCCESS -> We can inject, but main script is missing.
+                    // Seite ist injizierbar, aber Heuristik fand kein Standard-Eingabefeld
                     if (isKnownLLM(tab.url)) {
                         setConnectHelpReason("STALE_LLM_TAB");
                     } else {
@@ -902,17 +913,18 @@ export default function Popup() {
                     }
                     setShowConnectHelp(true);
                 } catch (err) {
-                    // PROBE FAILED -> Actually blocked by browser/CSP
+                    // Komplett blockierte Browser-Sonderseite (chrome://, Webstore etc.)
                     setConnectHelpReason("BROWSER_RESTRICTED");
                     setShowConnectHelp(true);
                 } finally {
-                    // Inner finally ensures UI reset even if probe fails internally
                     setIsConnecting(false);
                 }
             });
         } catch (err) {
-            console.error("Hard connect failed catastrophically:", err);
-            setIsConnecting(false); // Safety fallback
+            // Fängt synchrone Fehler beim initialen Sende-Versuch ab
+            clearTimeout(watchdog);
+            console.error("Hard connect failed synchronously:", err);
+            setIsConnecting(false);
         }
     };
     // @PROTECTED_REGION END: handleHardConnect
@@ -3419,7 +3431,28 @@ export default function Popup() {
                                 className="relative z-[120] w-full max-w-[280px] bg-bg-surface rounded-2xl shadow-2xl border border-border overflow-hidden"
                             >
                                 <div className="p-5 flex flex-col items-center text-center">
-                                    {connectHelpReason === "BROWSER_RESTRICTED" ? (
+                                    {connectHelpReason === "CONNECTION_TIMEOUT" ? (
+                                        <>
+                                            <div className="w-10 h-10 bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center mb-3">
+                                                <Clock size={20} strokeWidth={2.5} />
+                                            </div>
+                                            <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-1">
+                                                Connection Timeout
+                                            </h3>
+                                            <p className="text-[11px] text-text-muted leading-relaxed mb-5 px-1 text-center">
+                                                The page is not responding. Try refreshing the tab or selecting the input field manually.
+                                            </p>
+                                            <button
+                                                onClick={() => {
+                                                    setShowConnectHelp(false);
+                                                    startSelectionMode();
+                                                }}
+                                                className="w-full py-2.5 px-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+                                            >
+                                                <MousePointer2 size={14} /> Try Manual Selection
+                                            </button>
+                                        </>
+                                    ) : connectHelpReason === "BROWSER_RESTRICTED" ? (
                                         <>
                                             <div className="w-10 h-10 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-3">
                                                 <X size={20} strokeWidth={2.5} />
