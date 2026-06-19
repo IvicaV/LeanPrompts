@@ -249,9 +249,13 @@ I built LeanPrompts for speed. Keep your hands on the keyboard. *(Configure glob
 
 ## 📦 Installation
 
-### Option 1: Chrome Web Store (Recommended)
-Download directly from the official store for automatic updates.  
-👉 **[Install from Chrome Web Store](https://chromewebstore.google.com/detail/leanprompts-studio/pbdbopolbilaemiphldmecmlppedajnd)**
+### Option 1: Official Web Stores (Recommended)
+Install directly from your browser's official store to ensure secure sandboxing and automatic updates.
+
+*   **Chrome, Edge, Brave, Arc, and other Chromium browsers:**  
+    👉 **[Install from Chrome Web Store](https://chromewebstore.google.com/detail/leanprompts-studio/pbdbopolbilaemiphldmecmlppedajnd)**
+*   **Opera & Opera GX:**  
+    👉 **[Install from Opera Add-ons](https://addons.opera.com/de/extensions/details/leanprompts-studio/)**
 
 ### Option 2: Local Developer Install
 If you want to review the code or run it locally:
