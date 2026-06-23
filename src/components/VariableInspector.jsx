@@ -71,7 +71,8 @@ function VariableInspector({
     onSavePreset,
     onDeletePreset,
     onLoadPreset,
-    onRenamePreset
+    onRenamePreset,
+    activePresetName = null
 }) {
     const [highlightState, setHighlightState] = useState({ names: [], theme: 'primary' });
     const [openDropdown, setOpenDropdown] = useState(null); // <-- NEUER STATE HIER
@@ -410,6 +411,10 @@ function VariableInspector({
 
     // Track the last loaded or saved preset to enable rapid overwrites
     const [lastLoadedPreset, setLastLoadedPreset] = useState(null);
+
+    useEffect(() => {
+        setLastLoadedPreset(activePresetName);
+    }, [activePresetName]);
 
     // Rename state: tracks which preset is being edited inline
     const [editingPresetName, setEditingPresetName] = useState(null);
@@ -1330,6 +1335,9 @@ const getVariableSchema = (variable, rawContent) => {
 };
 
 const arePropsEqual = (prevProps, nextProps) => {
+    // 0. Compare active preset name
+    if (prevProps.activePresetName !== nextProps.activePresetName) return false;
+
     // 1. Array comparison for variable names
     if (prevProps.variables?.length !== nextProps.variables?.length) return false;
     if (prevProps.variables?.some((v, i) => v !== nextProps.variables[i])) return false;

@@ -88,6 +88,16 @@ export default function Dashboard() {
   // Lifted state for persistence (variables & files)
   const [variableValues, setVariableValues] = useState({});
   const [currentStepFiles, setCurrentStepFiles] = useState([]);
+  const [activePresetName, setActivePresetName] = useState(null);
+
+  const savePresetNameToDB = async (promptId, presetName) => {
+    if (!promptId) return;
+    try {
+      const existingCache = (await dbAPI.getSessionCache(promptId)) || {};
+      existingCache['_activePresetName'] = presetName;
+      await dbAPI.saveSessionCache(promptId, existingCache);
+    } catch (e) { }
+  };
 
   // Lifted state for Snippet persistence
   const [snippetEditName, setSnippetEditName] = useState("");
@@ -327,6 +337,7 @@ export default function Dashboard() {
         if (!isCurrent) return;
 
         const cachedFilesMap = cachedFilesMapResult || {};
+        const activePresetNameFromDB = cachedFilesMap['_activePresetName'] || null;
 
         const activeKey = activeStepId || (prompts.find(p => p.id === activePromptId)?.chain?.[0]?.id) || activePromptId;
         const tempCache = {};
@@ -388,6 +399,11 @@ export default function Dashboard() {
 
           sessionCache.current = mergedCache;
 
+          if (activePresetNameFromDB) {
+            mergedCache[activeKey].activePresetName = activePresetNameFromDB;
+          }
+          setActivePresetName(mergedCache[activeKey]?.activePresetName || null);
+
           // Aktuelle UI-States synchronisieren
           if (mergedCache[activeKey]) {
             setCurrentStepFiles(mergedCache[activeKey].files || []);
@@ -428,6 +444,7 @@ export default function Dashboard() {
         // Safe async reload from IndexedDB
         dbAPI.getSessionCache(activePromptId).then(async (cachedFilesMapResult) => {
           const cachedFilesMap = cachedFilesMapResult || {};
+          const activePresetNameFromDB = cachedFilesMap['_activePresetName'] || null;
           // --- DEFENSIVE ID-RESOLUTION: Always fall back to the first step's ID of the active prompt ---
           const activeKey = activeStepId || (prompts.find(p => p.id === activePromptId)?.chain?.[0]?.id) || activePromptId;
           const tempCache = {};
@@ -478,6 +495,11 @@ export default function Dashboard() {
           });
 
           sessionCache.current = mergedCache;
+
+          if (activePresetNameFromDB) {
+            mergedCache[activeKey].activePresetName = activePresetNameFromDB;
+          }
+          setActivePresetName(mergedCache[activeKey]?.activePresetName || null);
 
           const stepData = mergedCache[activeKey] || { files: [], values: {} };
           setCurrentStepFiles(stepData.files || []);
@@ -593,9 +615,11 @@ export default function Dashboard() {
     if (id && sessionCache.current[id]) {
       setVariableValues(sessionCache.current[id].values || {});
       setCurrentStepFiles(sessionCache.current[id].files || []);
+      setActivePresetName(sessionCache.current[id]?.activePresetName || null);
     } else {
       setVariableValues({});
       setCurrentStepFiles([]);
+      setActivePresetName(null);
     }
   };
 
@@ -1788,8 +1812,13 @@ const initiateWorkflow = async (promptId) => {
 
     setVariableValues({});
     setCurrentStepFiles([]);
+    setActivePresetName(null);
     saveValuesToCache(activeStepId || activePromptId, {});
     saveFilesToCache(activeStepId || activePromptId, []);
+    const activeKey = activeStepId || activePromptId;
+    if (activeKey && sessionCache.current[activeKey]) {
+      sessionCache.current[activeKey].activePresetName = null;
+    }
 
     if (activePromptId) {
       try {
@@ -1848,6 +1877,16 @@ const initiateWorkflow = async (promptId) => {
 
     await savePreset(activePrompt.id, name, variableValues, processedFiles.filter(Boolean));
     showNotification(`Preset "${name}" saved!`);
+
+    setActivePresetName(name);
+    savePresetNameToDB(activePrompt.id, name);
+    const activeKey = activeStepId || activePromptId;
+    if (activeKey) {
+      if (!sessionCache.current[activeKey]) {
+        sessionCache.current[activeKey] = { values: {}, files: [] };
+      }
+      sessionCache.current[activeKey].activePresetName = name;
+    }
   };
 
   const handleDeletePreset = async (name) => {
@@ -1855,6 +1894,15 @@ const initiateWorkflow = async (promptId) => {
     const { deletePreset } = usePromptStore.getState();
     await deletePreset(activePrompt.id, name);
     showNotification(`Preset "${name}" deleted.`);
+
+    if (name === activePresetName) {
+      setActivePresetName(null);
+      savePresetNameToDB(activePrompt.id, null);
+      const activeKey = activeStepId || activePromptId;
+      if (activeKey && sessionCache.current[activeKey]) {
+        sessionCache.current[activeKey].activePresetName = null;
+      }
+    }
   };
 
   const handleRenamePreset = async (oldName, newName) => {
@@ -1875,6 +1923,18 @@ const initiateWorkflow = async (promptId) => {
     const { savePrompt: _savePrompt } = usePromptStore.getState();
     await _savePrompt({ ...activePrompt, presets: newPresets });
     showNotification(`Preset renamed to "${finalNewName}"`);
+
+    if (oldName === activePresetName) {
+      setActivePresetName(finalNewName);
+      savePresetNameToDB(activePrompt.id, finalNewName);
+      const activeKey = activeStepId || activePromptId;
+      if (activeKey) {
+        if (!sessionCache.current[activeKey]) {
+          sessionCache.current[activeKey] = { values: {}, files: [] };
+        }
+        sessionCache.current[activeKey].activePresetName = finalNewName;
+      }
+    }
   };
 
   const handleLoadPreset = (name) => {
@@ -1898,6 +1958,16 @@ const initiateWorkflow = async (promptId) => {
     }
     
     showNotification(`Loaded preset "${name}"`);
+
+    setActivePresetName(name);
+    savePresetNameToDB(activePrompt.id, name);
+    const activeKey = activeStepId || activePromptId;
+    if (activeKey) {
+      if (!sessionCache.current[activeKey]) {
+        sessionCache.current[activeKey] = { values: {}, files: [] };
+      }
+      sessionCache.current[activeKey].activePresetName = name;
+    }
   };
 
   // --- COLLECTIONS HANDLERS ---
@@ -2839,6 +2909,7 @@ const initiateWorkflow = async (promptId) => {
                 {/* INSPECTOR PANEL (At the edge of screen, sibling to main content) */}
                 {activePrompt && (
                   <InspectorPanel
+                    activePresetName={activePresetName}
                     isCollapsed={isInspectorCollapsed}
                     onToggleCollapse={() => setIsInspectorCollapsed(!isInspectorCollapsed)}
                     onConfirmAction={confirmAction}

@@ -36,6 +36,7 @@ import NoteEditor from '../../../components/NoteEditor';
 import VersionHistory from '../../../components/VersionHistory';
 
 export default function InspectorPanel({
+  activePresetName = null,
   isCollapsed,
   onToggleCollapse,
   activeTab,
@@ -346,6 +347,7 @@ export default function InspectorPanel({
             onDeletePreset={onDeletePreset}
             onLoadPreset={onLoadPreset}
             onRenamePreset={onRenamePreset}
+            activePresetName={activePresetName}
           />
         ) : activeTab === 'notes' ? (
           <NoteEditor
