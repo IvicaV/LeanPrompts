@@ -76,6 +76,8 @@ function VariableInspector({
 }) {
     const [highlightState, setHighlightState] = useState({ names: [], theme: 'primary' });
     const [openDropdown, setOpenDropdown] = useState(null); // <-- NEUER STATE HIER
+    const [isFlipped, setIsFlipped] = useState(false); // <-- NEU: Für Smart Flipping
+    const [maxDropdownHeight, setMaxDropdownHeight] = useState(192); // <-- NEU: Standard 192px (max-h-48)
     const fileInputRef = useRef(null);
 
     // =========================================================================
@@ -501,6 +503,58 @@ function VariableInspector({
             setIsSaving(false);
         }
     };
+
+    // =========================================================================
+    // CLICK-OUTSIDE HANDLER (Schließt das Variablen-Dropdown bei Klick außerhalb)
+    // Ersetzt den blockierenden Fullscreen-Backdrop für barrierefreies Scrollen.
+    // =========================================================================
+    useEffect(() => {
+        if (openDropdown === null) return;
+
+        const handleClickOutside = (e) => {
+            // Prüfen, ob der Klick auf den Button (Trigger) oder das Dropdown selbst ging
+            const isTrigger = e.target.closest('[data-lp-focus-target="true"]');
+            const isDropdown = e.target.closest('.dm-dropdown');
+            
+            if (!isTrigger && !isDropdown) {
+                setOpenDropdown(null);
+            }
+        };
+
+        // Kurze Verzögerung, um ein sofortiges Schließen beim Öffnen-Klick zu verhindern
+        const timeout = setTimeout(() => {
+            document.addEventListener('click', handleClickOutside);
+        }, 10);
+
+        return () => {
+            clearTimeout(timeout);
+            document.removeEventListener('click', handleClickOutside);
+        };
+    }, [openDropdown]);
+
+    // =========================================================================
+    // DEFENSIVER SCROLL-HANDLER (Nur für Presets aktiv)
+    // Variablen-Dropdowns dürfen offen bleiben, da sie nativ mitscrollen.
+    // =========================================================================
+    useEffect(() => {
+        if (!showPresets) return;
+
+        const handleContainerScroll = (e) => {
+            if (e.target.closest('.dm-dropdown')) return;
+            setShowPresets(false);
+        };
+
+        const container = scrollContainerRef.current;
+        if (container) {
+            container.addEventListener('scroll', handleContainerScroll, { passive: true });
+        }
+
+        return () => {
+            if (container) {
+                container.removeEventListener('scroll', handleContainerScroll);
+            }
+        };
+    }, [showPresets]);
 
     return (
         <div className="flex flex-col h-full bg-bg">
@@ -1071,7 +1125,33 @@ function VariableInspector({
                                                 disabled={isIgnored}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if (!isIgnored) setOpenDropdown(openDropdown === variable ? null : variable);
+                                                    if (!isIgnored) {
+                                                        const buttonRect = e.currentTarget.getBoundingClientRect();
+                                                        const container = scrollContainerRef.current;
+                                                        
+                                                        let spaceBelow, spaceAbove;
+                                                        
+                                                        if (container) {
+                                                            // Messung relativ zur sichtbaren Grenze des Scroll-Containers
+                                                            const containerRect = container.getBoundingClientRect();
+                                                            spaceBelow = containerRect.bottom - buttonRect.bottom - 8;
+                                                            spaceAbove = buttonRect.top - containerRect.top - 8;
+                                                        } else {
+                                                            // Failsafe-Fallback relativ zum Viewport
+                                                            spaceBelow = window.innerHeight - buttonRect.bottom - 12;
+                                                            spaceAbove = buttonRect.top - 12;
+                                                        }
+                                                        
+                                                        // Richtung wählen: Umklappen, wenn oben mehr Platz ist als unten AND der Platz unten knapp wird (< 180px)
+                                                        const shouldFlip = spaceAbove > spaceBelow && spaceBelow < 180;
+                                                        setIsFlipped(shouldFlip);
+                                                        
+                                                        // Maximale Höhe dynamisch begrenzen, damit es niemals clippt
+                                                        const availableSpace = shouldFlip ? spaceAbove : spaceBelow;
+                                                        setMaxDropdownHeight(Math.max(100, Math.min(192, availableSpace)));
+                                                        
+                                                        setOpenDropdown(openDropdown === variable ? null : variable);
+                                                    }
                                                 }}
                                                 title={values[variable] || defaultVal}
                                                 className={`w-full bg-bg-elevated border rounded-lg pl-3 pr-8 py-2.5 text-xs text-text-main focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all shadow-sm font-sans flex items-center justify-between group/dropdown hover:border-primary/50 text-left ${
@@ -1084,42 +1164,43 @@ function VariableInspector({
 
                                             {/* Das eigentliche Menü (Custom UI) */}
                                             {openDropdown === variable && (
-                                                <>
-                                                    {/* Unsichtbarer Backdrop zum Schließen beim Klicken daneben (100% sicher, kein Event-Leak) */}
-                                                    <div className="fixed inset-0 z-[60]" onClick={(e) => { e.stopPropagation(); setOpenDropdown(null); }}></div>
-                                                    
-                                                    {/* Das Menü im exakten LeanPrompts Premium-Look */}
-                                                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-bg-surface border border-border rounded-xl shadow-2xl z-[70] p-1.5 animate-in fade-in slide-in-from-top-2 duration-150 dm-dropdown">
-                                                        <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                                                            {dropdownOptions.map((opt, i) => {
-                                                                const isSelected = (values[variable] || defaultVal) === opt;
-                                                                return (
-                                                                    <button
-                                                                        key={i}
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            onChange(variable, opt);
-                                                                            setOpenDropdown(null);
-                                                                        }}
-                                                                        title={opt}
-                                                                        /* FIX: items-start statt items-center, damit der Haken bei Mehrzeilern oben bleibt */
-                                                                        className={`w-full flex items-start justify-between px-3 py-2 rounded-lg text-xs transition-all text-left ${
-                                                                            isSelected
-                                                                                ? 'bg-primary/10 text-primary font-semibold'
-                                                                                : 'text-text-muted hover:text-text-main hover:bg-bg-hover'
-                                                                        }`}
-                                                                    >
-                                                                        {/* FIX: line-clamp-3 statt truncate erlaubt bis zu 3 Zeilen Textumbruch, leading-relaxed für bessere Lesbarkeit */}
-                                                                        <span className="line-clamp-3 leading-relaxed pr-2">{opt}</span>
-                                                                        
-                                                                        {/* FIX: mt-0.5 gleicht den Haken auf die erste Textzeile ab */}
-                                                                        {isSelected && <Check size={12} className="ml-auto shrink-0 mt-0.5" />}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
+                                                <div className={`absolute left-0 right-0 bg-bg-surface border border-border rounded-xl shadow-2xl z-[70] p-1.5 animate-in fade-in duration-150 dm-dropdown ${
+                                                    isFlipped 
+                                                        ? 'bottom-full mb-1.5 slide-in-from-bottom-2' 
+                                                        : 'top-full mt-1.5 slide-in-from-top-2'
+                                                }`}>
+                                                    <div 
+                                                        className="overflow-y-auto custom-scrollbar"
+                                                        style={{ maxHeight: `${maxDropdownHeight}px` }}
+                                                    >
+                                                        {dropdownOptions.map((opt, i) => {
+                                                            const isSelected = (values[variable] || defaultVal) === opt;
+                                                            return (
+                                                                <button
+                                                                    key={i}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onChange(variable, opt);
+                                                                        setOpenDropdown(null);
+                                                                    }}
+                                                                    title={opt}
+                                                                    /* FIX: items-start statt items-center, damit der Haken bei Mehrzeilern oben bleibt */
+                                                                    className={`w-full flex items-start justify-between px-3 py-2 rounded-lg text-xs transition-all text-left ${
+                                                                        isSelected
+                                                                            ? 'bg-primary/10 text-primary font-semibold'
+                                                                            : 'text-text-muted hover:text-text-main hover:bg-bg-hover'
+                                                                    }`}
+                                                                >
+                                                                    {/* FIX: line-clamp-3 statt truncate erlaubt bis zu 3 Zeilen Textumbruch, leading-relaxed für bessere Lesbarkeit */}
+                                                                    <span className="line-clamp-3 leading-relaxed pr-2">{opt}</span>
+                                                                    
+                                                                    {/* FIX: mt-0.5 gleicht den Haken auf die erste Textzeile ab */}
+                                                                    {isSelected && <Check size={12} className="ml-auto shrink-0 mt-0.5" />}
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
-                                                </>
+                                                </div>
                                             )}
                                         </div>
                                     ) : (
