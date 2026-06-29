@@ -92,8 +92,7 @@ export class MistralStrategy extends AbstractBaseStrategy {
 
         const quickCheck = normalize(
             (element.value || "") + " " +
-            (element.innerText || "") + " " +
-            (element.textContent || "")
+            (element.textContent || "") // Optimized: Use textContent instead of innerText
         );
         if (quickCheck.includes(expected)) return true;
 
@@ -106,8 +105,7 @@ export class MistralStrategy extends AbstractBaseStrategy {
 
             const content = normalize(
                 (element.value || "") + " " +
-                (element.innerText || "") + " " +
-                (element.textContent || "")
+                (element.textContent || "") // Optimized: Use textContent instead of innerText
             );
 
             if (content.includes(expected)) return true;

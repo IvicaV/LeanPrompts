@@ -81,7 +81,8 @@ export class GeminiStrategy extends AbstractBaseStrategy {
 
         for (let i = 0; i < 10; i++) {
             const val = element.value !== undefined ? element.value : "";
-            const content = normalize(val + " " + element.innerText + " " + element.textContent);
+            // Optimized: Use textContent instead of innerText
+            const content = normalize(val + " " + element.textContent);
 
             if (content.includes(expected)) return true;
 

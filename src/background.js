@@ -47,12 +47,23 @@ async function ensureContentScriptActive(tabId) {
         if (chrome.runtime.lastError) resolve(false);
         else resolve(response && (response.status === "ACK" || response.status === "PONG"));
       });
-      setTimeout(() => resolve(false), 150);
+      setTimeout(() => resolve(false), 250); // Erhöht auf 250ms für verbesserte Toleranz bei hoher Systemlast
     });
 
     if (isActive) return true;
 
-    // 2. Falls inaktiv, lade das Skript über die scripting-API dynamisch nach
+    // 2. Falls inaktiv, prüfe über executeScript, ob das Skript bereits im Window-Kontext aktiv ist.
+    // Dies schützt zuverlässig vor doppelten Injektionen bei hoher Auslastung des Message-Ports.
+    const isAlreadyInjected = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => !!window.__LP_CONTENT_SCRIPT_ACTIVE
+    }).then(results => results?.[0]?.result).catch(() => false);
+
+    if (isAlreadyInjected) {
+      return true;
+    }
+
+    // 3. Falls gänzlich inaktiv, lade das Skript über die scripting-API dynamisch nach
     const manifest = chrome.runtime.getManifest();
     const contentScript = manifest.content_scripts?.[0]?.js?.[0];
     

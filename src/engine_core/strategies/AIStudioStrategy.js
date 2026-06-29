@@ -189,7 +189,8 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
 
         // Advanced Polling: 8 attempts @ 300ms = 2.4 seconds total wait limit for verification
         for (let i = 0; i < 8; i++) {
-            const content = normalizeText(element.value || element.innerText || "");
+            // Optimiert: Use textContent instead of innerText
+            const content = normalizeText(element.value || element.textContent || "");
 
             if (content.includes(expected)) return true;
 

@@ -164,10 +164,13 @@ export class AbstractBaseStrategy {
             .trim()
             .toLowerCase();
 
+        // Einmalige Berechnung vor der Schleife spart wertvolle CPU-Zyklen bei großen Prompts
+        const expected = normalizeText(text).substring(0, 10);
+
         // We give the framework up to 1 second to accept the value (5 polls of 200ms)
         for (let i = 0; i < 5; i++) {
-            const content = normalizeText(element.value || element.innerText || "");
-            const expected = normalizeText(text).substring(0, 10);
+            // Optimiert: Nutzung von textContent zur Vermeidung von Layout-Reflows
+            const content = normalizeText(element.value || element.textContent || "");
 
             // Refuse success if verification string is too short/empty (avoids false-positives)
             if (expected.length < 3) return true; // Too short to verify reliably, assume success
@@ -180,7 +183,7 @@ export class AbstractBaseStrategy {
             }
         }
 
-        console.warn(`LeanPrompts: Verification failed. Expected part of: "${text.substring(0, 20)}..." but found: "${(element.value || element.innerText || "").substring(0, 30)}..."`);
+        console.warn(`LeanPrompts: Verification failed. Expected part of: "${text.substring(0, 20)}..." but found: "${(element.value || element.textContent || "").substring(0, 30)}..."`);
         return false;
     }
 

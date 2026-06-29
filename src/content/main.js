@@ -24,6 +24,9 @@
    Sequence (Find -> Fingerprint -> Inject) is immutable. */
 import { getCurrentAdapter, insertText, injectFiles, findBestTextInput, waitForElement, findAllElementsDeep } from '../engine_core/adapters';
 
+// Set active flag to prevent double-injection of content scripts
+window.__LP_CONTENT_SCRIPT_ACTIVE = true;
+
 console.log("LeanPrompts: [VER 1.0.5-FINAL] Content Script Active.");
 
 // --- EXTENSION CONTEXT INVALIDATION GUARD ---
