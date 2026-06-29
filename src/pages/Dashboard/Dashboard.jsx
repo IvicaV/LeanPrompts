@@ -599,6 +599,67 @@ export default function Dashboard() {
     }
   };
 
+  // --- NEW: BATCH ATOMIC SESSION CACHE PERSISTENCE (RACE-CONDITION FREE) ---
+  const savePresetSessionCache = async (promptId, activeKey, values, stepFilesList) => {
+    if (!promptId) return;
+    try {
+      const existingCache = (await dbAPI.getSessionCache(promptId)) || {};
+      const targets = [];
+
+      // A) Queue step-level attachments
+      if (stepFilesList && stepFilesList.length > 0) {
+        targets.push({ key: activeKey, files: stepFilesList });
+      }
+
+      // B) Queue individual file variables
+      Object.entries(values || {}).forEach(([key, files]) => {
+        if (key.startsWith('file:') || key.startsWith('!file:')) {
+          const filesArray = Array.isArray(files) ? files : (files ? [files] : []);
+          targets.push({ key, files: filesArray });
+        }
+      });
+
+      // C) Serialize all files concurrently on the CPU
+      const serializedResults = await Promise.all(targets.map(async (target) => {
+        const serializedFiles = await Promise.all(target.files.map(f => new Promise((resolve, reject) => {
+          if (f.isGhost) {
+            resolve({ name: f.name, type: f.type, size: f.size, isGhost: true });
+            return;
+          }
+          if (f.data && typeof f.data === 'string') {
+            resolve({ name: f.name, type: f.type, size: f.size, data: f.data });
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => resolve({
+            name: f.name, type: f.type, size: f.size, data: reader.result
+          });
+          reader.onerror = reject;
+          reader.readAsDataURL(f);
+        })));
+        return { key: target.key, files: serializedFiles.filter(Boolean) };
+      }));
+
+      // D) Apply all mutations in a single synchronous pass
+      serializedResults.forEach(res => {
+        existingCache[res.key] = res.files;
+      });
+
+      // E) Save the merged state once to IndexedDB and trigger the ping
+      await dbAPI.saveSessionCache(promptId, existingCache);
+
+      chrome.storage.local.set({
+        lp_files_sync_ping: {
+          promptId,
+          timestamp: Date.now(),
+          source: 'dashboard'
+        }
+      });
+    } catch (e) {
+      console.warn("LeanPrompts: Failed to batch persist preset files safely:", e);
+    }
+  };
+
   const saveValuesToCache = (id, values) => {
     if (!id) return;
     if (!sessionCache.current[id]) sessionCache.current[id] = { values: {}, files: [] };
@@ -1749,17 +1810,17 @@ const initiateWorkflow = async (promptId) => {
     } catch (e) { /* silent fail */ }
   };
 
-  const handleVariableChange = (key, value) => {
+  const handleVariableChange = (key, val) => {
     const cleanKey = key.replace(/^!/, '').replace(/^!file:/i, 'file:');
     const newVars = { ...variableValues };
     
     const legacyKey = key !== cleanKey ? key : (key.startsWith('file:') ? key.replace('file:', '!file:') : `!${key}`);
     if (newVars[legacyKey] !== undefined) delete newVars[legacyKey];
 
-    if (value === null || value === undefined) {
+    if (val === null || val === undefined) {
         delete newVars[cleanKey];
     } else {
-        newVars[cleanKey] = value;
+        newVars[cleanKey] = val;
     }
 
     setVariableValues(newVars);
@@ -1767,7 +1828,7 @@ const initiateWorkflow = async (promptId) => {
 
     // Wenn es sich um eine Dateivariable handelt, sichere sie isoliert
     if (key.startsWith('file:') || key.startsWith('!file:')) {
-      saveStepFilesToDB(activePromptId, key, value);
+      saveStepFilesToDB(activePromptId, key, val);
     }
 
     // Persistiert Textänderungen sofort für das Popup (Kaltstart-sicher)
@@ -1875,12 +1936,39 @@ const initiateWorkflow = async (promptId) => {
       })
     );
 
-    await savePreset(activePrompt.id, name, variableValues, processedFiles.filter(Boolean));
+    const finalFiles = processedFiles.filter(Boolean);
+    await savePreset(activePrompt.id, name, variableValues, finalFiles);
+
+    // --- PERSIST SAVED/UPDATED PRESET VALUES TO LAST SESSION & BROADCAST ---
+    persistActiveSessionText(activePrompt.id, variableValues);
+
+    const activeKey = activeStepId || activePromptId;
+    savePresetSessionCache(activePrompt.id, activeKey, variableValues, finalFiles);
+
+    // Broadcast live sync ping for text variables
+    try {
+      const textOnlyVars = {};
+      Object.keys(variableValues).forEach(k => {
+        if (!k.startsWith('file:') && !k.startsWith('!file:')) {
+          textOnlyVars[k] = variableValues[k];
+        }
+      });
+      chrome.storage.local.set({
+        lp_live_sync_ping: {
+          timestamp: Date.now(),
+          source: 'dashboard',
+          promptId: activePrompt.id,
+          type: 'text',
+          values: textOnlyVars
+        }
+      });
+    } catch (e) { }
+    // --------------------------------------------------------
+
     showNotification(`Preset "${name}" saved!`);
 
     setActivePresetName(name);
     savePresetNameToDB(activePrompt.id, name);
-    const activeKey = activeStepId || activePromptId;
     if (activeKey) {
       if (!sessionCache.current[activeKey]) {
         sessionCache.current[activeKey] = { values: {}, files: [] };
@@ -1956,12 +2044,37 @@ const initiateWorkflow = async (promptId) => {
     if (newFiles.length > 0) {
       saveFilesToCache(activeStepId || activePromptId, newFiles);
     }
+
+    // --- PERSIST LOADED PRESET VALUES TO LAST SESSION & BROADCAST ---
+    persistActiveSessionText(activePrompt.id, newValues);
     
+    const activeKey = activeStepId || activePromptId;
+    savePresetSessionCache(activePrompt.id, activeKey, newValues, newFiles);
+
+    // Broadcast live sync ping for text variables
+    try {
+      const textOnlyVars = {};
+      Object.keys(newValues).forEach(k => {
+        if (!k.startsWith('file:') && !k.startsWith('!file:')) {
+          textOnlyVars[k] = newValues[k];
+        }
+      });
+      chrome.storage.local.set({
+        lp_live_sync_ping: {
+          timestamp: Date.now(),
+          source: 'dashboard',
+          promptId: activePrompt.id,
+          type: 'text',
+          values: textOnlyVars
+        }
+      });
+    } catch (e) { }
+    // --------------------------------------------------------
+
     showNotification(`Loaded preset "${name}"`);
 
     setActivePresetName(name);
     savePresetNameToDB(activePrompt.id, name);
-    const activeKey = activeStepId || activePromptId;
     if (activeKey) {
       if (!sessionCache.current[activeKey]) {
         sessionCache.current[activeKey] = { values: {}, files: [] };
