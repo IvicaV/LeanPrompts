@@ -20,7 +20,7 @@
  * ============================================================================
  */
 import React, { useMemo, useState, useEffect } from 'react';
-import { resolveSnippets } from '../utils/variableParser';
+import { resolveSnippets, getIgnoredRanges } from '../utils/variableParser';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { html } from '@codemirror/lang-html';
@@ -541,10 +541,24 @@ const locatorPlugin = ViewPlugin.fromClass(class {
     try {
       const targetVar = e.detail.name;
       const doc = this.view.state.doc.toString();
+      
+      // 1. ACTIVE STEP GUARD: Ignoriere das Event, wenn dieser Editor inaktiv/gesperrt ist
+      const isLocked = !!this.view.dom.closest('.step-scroll-locked');
+      if (isLocked) {
+        return;
+      }
+
+      // 2. IGNORED RANGES: Berechne inaktive Bereiche (Kommentare, Code-Blöcke)
+      const ignoredRanges = getIgnoredRanges(doc);
+      const isPositionIgnored = (pos) => ignoredRanges.some(r => pos >= r.from && pos <= r.to);
+
       const varRegex = /\{\{([\s\S]+?)\}\}/g;
       let match;
       
       while ((match = varRegex.exec(doc)) !== null) {
+        // Überspringe Treffer, die sich in inaktiven Bereichen befinden
+        if (isPositionIgnored(match.index)) continue;
+
         const rawInner = match[1].trim();
         const parts = rawInner.split(':');
         const firstPart = parts[0].trim().toLowerCase();
@@ -558,7 +572,6 @@ const locatorPlugin = ViewPlugin.fromClass(class {
         }
         
         if (varKey === targetVar) {
-          // ZERO-REGRESSION: Uses native StateEffect to center the target on the Y-axis instantly
           this.view.dispatch({
             selection: { anchor: match.index, head: match.index + match[0].length },
             effects: EditorView.scrollIntoView(match.index, { y: "center" })
@@ -566,7 +579,7 @@ const locatorPlugin = ViewPlugin.fromClass(class {
           if (!this.view.hasFocus) {
             this.view.focus();
           }
-          break; // Stop at first match
+          break; // Nur den ersten echten Treffer im aktiven Editor fokussieren
         }
       }
     } catch (err) {
