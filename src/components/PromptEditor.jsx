@@ -791,31 +791,55 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
     // Das ist der Suchbegriff des Users (ohne das '@')
     const query = word.text.substring(1).toLowerCase();
 
-    // 1. DEEP SEARCH LOGIK: Filtere nach Name, Inhalt ODER Tags
-    let filteredSnippets = snippets;
+    let options = [];
     if (query) {
-      filteredSnippets = snippets.filter(s =>
-        // Suche im Namen
-        s.name.toLowerCase().includes(query) ||
-        // Suche im Text-Inhalt des Snippets
-        (s.content && s.content.toLowerCase().includes(query)) ||
-        // Suche in den Tags (z.B. wenn das Snippet den Tag "Marketing" hat)
-        (s.tags && s.tags.some(t => t.toLowerCase().includes(query)))
-      );
+      // 1. RELEVANZ-SCORING: Weise jedem Treffer eine Gewichtung zu
+      const scoredSnippets = snippets
+        .map(s => {
+          const nameLower = (s.name || '').toLowerCase();
+          let score = 0;
+
+          if (nameLower === query) {
+            score = 100; // Exakter Treffer im Namen
+          } else if (nameLower.startsWith(query)) {
+            score = 80;  // Name beginnt mit Suchbegriff (Präfix)
+          } else if (nameLower.includes(query)) {
+            score = 50;  // Name enthält Suchbegriff (Infix)
+          } else if (s.tags && s.tags.some(t => t && t.toLowerCase().includes(query))) {
+            score = 20;  // Treffer in den Tags
+          } else if (s.content && s.content.toLowerCase().includes(query)) {
+            score = 10;  // Treffer im eigentlichen Inhalt
+          }
+
+          return { snippet: s, score };
+        })
+        .filter(item => item.score > 0) // Nur übereinstimmende Snippets behalten
+        .sort((a, b) => b.score - a.score); // Absteigend nach Relevanz sortieren
+
+      options = scoredSnippets.map(item => {
+        const s = item.snippet;
+        return {
+          label: `@${s.name}`,
+          detail: (s.content && s.content.length > 45) ? s.content.substring(0, 45).replace(/\n/g, ' ') + '...' : (s.content ? s.content.replace(/\n/g, ' ') : ''),
+          apply: `@{${s.name}}`,
+          type: 'variable',
+          boost: item.score // Verwende den Score als CodeMirror-Boost
+        };
+      });
+    } else {
+      // Wenn das Suchfeld leer ist, zeige alle Snippets in ihrer Standard-Sortierung
+      options = snippets.map(s => ({
+        label: `@${s.name}`,
+        detail: (s.content && s.content.length > 45) ? s.content.substring(0, 45).replace(/\n/g, ' ') + '...' : (s.content ? s.content.replace(/\n/g, ' ') : ''),
+        apply: `@{${s.name}}`,
+        type: 'variable'
+      }));
     }
 
     return {
       from: word.from,
-      // 2. DAS IST DER MAGISCHE SCHLÜSSEL: 
-      // Wir sagen CodeMirror, dass wir das Filtern selbst übernommen haben!
       filter: false,
-      options: filteredSnippets.map(s => ({
-        label: `@${s.name}`,
-        // Zeige einen Ausschnitt des Inhalts als Vorschau (ohne Zeilenumbrüche)
-        detail: s.content.length > 45 ? s.content.substring(0, 45).replace(/\n/g, ' ') + '...' : s.content.replace(/\n/g, ' '),
-        apply: `@{${s.name}}`,
-        type: 'variable'
-      }))
+      options
     };
   };
 

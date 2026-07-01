@@ -680,15 +680,52 @@ export default function KnowledgeTileEditor({
         if (!word) return null;
         if (word.from === word.to && !context.explicit) return null;
 
-        return {
-            from: word.from,
-            options: prompts.map(p => ({
+        const query = word.text.substring(1).toLowerCase();
+
+        let options = [];
+        if (query) {
+            const scoredPrompts = prompts
+                .map(p => {
+                    const titleLower = (p.title || '').toLowerCase();
+                    let score = 0;
+
+                    if (titleLower === query) {
+                        score = 100;
+                    } else if (titleLower.startsWith(query)) {
+                        score = 80;
+                    } else if (titleLower.includes(query)) {
+                        score = 50;
+                    } else if (p.content && p.content.toLowerCase().includes(query)) {
+                        score = 10;
+                    }
+
+                    return { prompt: p, score };
+                })
+                .filter(item => item.score > 0)
+                .sort((a, b) => b.score - a.score);
+
+            options = scoredPrompts.map(item => ({
+                label: `#${item.prompt.title}`,
+                displayLabel: item.prompt.title,
+                detail: "Link Prompt",
+                apply: `[[${item.prompt.title}]]`,
+                type: 'reference',
+                boost: item.score
+            }));
+        } else {
+            options = prompts.map(p => ({
                 label: `#${p.title}`,
                 displayLabel: p.title,
                 detail: "Link Prompt",
                 apply: `[[${p.title}]]`,
                 type: 'reference'
-            }))
+            }));
+        }
+
+        return {
+            from: word.from,
+            filter: false,
+            options
         };
     };
 
@@ -698,15 +735,52 @@ export default function KnowledgeTileEditor({
         if (!word) return null;
         if (word.from === word.to && !context.explicit) return null;
 
-        return {
-            from: word.from,
-            options: snippets.map(s => ({
+        const query = word.text.substring(1).toLowerCase();
+
+        let options = [];
+        if (query) {
+            const scoredSnippets = snippets
+                .map(s => {
+                    const nameLower = (s.name || '').toLowerCase();
+                    let score = 0;
+
+                    if (nameLower === query) {
+                        score = 100;
+                    } else if (nameLower.startsWith(query)) {
+                        score = 80;
+                    } else if (nameLower.includes(query)) {
+                        score = 50;
+                    } else if (s.content && s.content.toLowerCase().includes(query)) {
+                        score = 10;
+                    }
+
+                    return { snippet: s, score };
+                })
+                .filter(item => item.score > 0)
+                .sort((a, b) => b.score - a.score);
+
+            options = scoredSnippets.map(item => ({
+                label: `@${item.snippet.name}`,
+                displayLabel: item.snippet.name,
+                detail: "Link Snippet",
+                apply: `@${item.snippet.name}`,
+                type: 'variable',
+                boost: item.score
+            }));
+        } else {
+            options = snippets.map(s => ({
                 label: `@${s.name}`,
                 displayLabel: s.name,
                 detail: "Link Snippet",
                 apply: `@${s.name}`,
                 type: 'variable'
-            }))
+            }));
+        }
+
+        return {
+            from: word.from,
+            filter: false,
+            options
         };
     };
 

@@ -56,18 +56,61 @@ export default function NoteLinkPicker({
         }
     }, [isOpen]);
 
-    // Filter items based on search query - NO LIMIT
-    const filteredPrompts = prompts.filter(p =>
-        p.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const queryLower = React.useMemo(() => searchQuery.toLowerCase().trim(), [searchQuery]);
 
-    const filteredKB = knowledgeTiles.filter(t =>
-        t.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // 1. Prompts filtern & sortieren (Newest/Exact Match zuerst)
+    const filteredPrompts = React.useMemo(() => {
+        if (!queryLower) return prompts;
+        return prompts
+            .map(p => {
+                const titleLower = (p.title || '').toLowerCase();
+                let score = 0;
+                if (titleLower === queryLower) score = 100;
+                else if (titleLower.startsWith(queryLower)) score = 80;
+                else if (titleLower.includes(queryLower)) score = 50;
+                else if (p.content && p.content.toLowerCase().includes(queryLower)) score = 10;
+                return { prompt: p, score };
+            })
+            .filter(item => item.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .map(item => item.prompt);
+    }, [prompts, queryLower]);
 
-    const filteredSnippets = snippets.filter(s =>
-        s.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // 2. KB-Notes filtern & sortieren
+    const filteredKB = React.useMemo(() => {
+        if (!queryLower) return knowledgeTiles;
+        return knowledgeTiles
+            .map(t => {
+                const titleLower = (t.title || '').toLowerCase();
+                let score = 0;
+                if (titleLower === queryLower) score = 100;
+                else if (titleLower.startsWith(queryLower)) score = 80;
+                else if (titleLower.includes(queryLower)) score = 50;
+                else if (t.content && t.content.toLowerCase().includes(queryLower)) score = 10;
+                return { tile: t, score };
+            })
+            .filter(item => item.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .map(item => item.tile);
+    }, [knowledgeTiles, queryLower]);
+
+    // 3. Snippets filtern & sortieren
+    const filteredSnippets = React.useMemo(() => {
+        if (!queryLower) return snippets;
+        return snippets
+            .map(s => {
+                const nameLower = (s.name || '').toLowerCase();
+                let score = 0;
+                if (nameLower === queryLower) score = 100;
+                else if (nameLower.startsWith(queryLower)) score = 80;
+                else if (nameLower.includes(queryLower)) score = 50;
+                else if (s.content && s.content.toLowerCase().includes(queryLower)) score = 10;
+                return { snippet: s, score };
+            })
+            .filter(item => item.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .map(item => item.snippet);
+    }, [snippets, queryLower]);
 
     // Current list based on trigger and tab
     const currentItems = trigger === '@'
