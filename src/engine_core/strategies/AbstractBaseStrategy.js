@@ -88,57 +88,142 @@ export class AbstractBaseStrategy {
             element = this.getInput() || element;
         }
 
-        // 1. Try execCommand (most reliable for contenteditables)
         let success = false;
-        try {
-            success = document.execCommand('insertText', false, text);
-        } catch (e) { }
 
-        // 2. Fallback: Clipboard Event (Paste simulation)
-        if (!success) {
+        // Hilfsfunktion zur Text-Normalisierung für den schnellen Vergleich
+        const normalizeText = (t) => (t || "")
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/[*#_~`>+\-]/g, '')
+            .replace(/\u00A0/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+
+        // PFAD A: Rich-Text-Editoren (ContentEditable)
+        if (element.isContentEditable) {
             try {
                 const dataTransfer = new DataTransfer();
                 dataTransfer.setData('text/plain', text);
-                const event = new ClipboardEvent('paste', {
+                
+                const pasteEvent = new ClipboardEvent('paste', {
                     clipboardData: dataTransfer,
                     bubbles: true,
                     cancelable: true,
                     composed: true
                 });
-                element.dispatchEvent(event);
-                success = true;
-            } catch (e) { }
-        }
+                element.dispatchEvent(pasteEvent);
+                
+                element.dispatchEvent(new InputEvent('input', { 
+                    bubbles: true, 
+                    cancelable: true, 
+                    composed: true, 
+                    inputType: 'insertFromPaste' 
+                }));
+                
+                // Kurze Pause für asynchrone Framework-Zustandsänderungen
+                await new Promise(r => setTimeout(r, 50));
 
-        // 3. Fallback: Native Property Setter (Bypass React/Vue)
-        if (!success && (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT')) {
+                const expected = normalizeText(text).substring(0, 10);
+                const currentContent = normalizeText(element.value || element.textContent || "");
+                if (expected.length < 3 || currentContent.includes(expected)) {
+                    success = true;
+                }
+            } catch (e) { }
+
+            // Fallback 1: execCommand (unser bewährter Standard)
+            if (!success) {
+                try {
+                    success = document.execCommand('insertText', false, text);
+                } catch (e) { }
+            }
+
+            // Fallback 2: Roher Text-Ersatz
+            if (!success) {
+                try {
+                    element.textContent = text;
+                    success = true;
+                } catch (e) { }
+            }
+        }
+        // PFAD B: Standard-Textareas und Inputs (z. B. Deepseek, AI Studio)
+        else if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
+            let newValue = text;
+            let newCursorPos = text.length;
+            let start = 0;
+            let end = 0;
+            let supportsSelection = false;
+
+            try {
+                start = element.selectionStart;
+                end = element.selectionEnd;
+                // Prüfen, ob das Element Selektionen unterstützt (z.B. nicht bei input[type="email"])
+                supportsSelection = typeof start === 'number' && typeof end === 'number';
+            } catch (e) { }
+
+            // Option 1: Native Property Setter (schnell, umgeht React-Sperren)
             try {
                 const prototype = element.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
                 const nativeSetter = Object.getOwnPropertyDescriptor(prototype, "value").set;
-                nativeSetter.call(element, text);
-                success = true;
-            } catch (e) {
-                element.value = text;
-                success = true;
+                
+                if (element._valueTracker) {
+                    element._valueTracker.setValue('');
+                }
+                
+                if (supportsSelection) {
+                    const val = element.value || "";
+                    newValue = val.substring(0, start) + text + val.substring(end);
+                    newCursorPos = start + text.length;
+                }
+                
+                nativeSetter.call(element, newValue);
+                
+                if (element.value === newValue) {
+                    success = true;
+                }
+
+                // Cursor-Position separat setzen, damit Fehler hier nicht das "success" verhindern
+                if (success && supportsSelection) {
+                    try {
+                        element.selectionStart = element.selectionEnd = newCursorPos;
+                    } catch (e) { }
+                }
+            } catch (e) { }
+
+            // Option 2: Direkte Zuweisung (Fallback)
+            if (!success) {
+                try {
+                    if (supportsSelection) {
+                        const val = element.value || "";
+                        newValue = val.substring(0, start) + text + val.substring(end);
+                        newCursorPos = start + text.length;
+                    }
+                    element.value = newValue;
+                    if (element.value === newValue) {
+                        success = true;
+                    }
+                    if (success && supportsSelection) {
+                        try {
+                            element.selectionStart = element.selectionEnd = newCursorPos;
+                        } catch (e) { }
+                    }
+                } catch (e) { }
+            }
+
+            // Sync-Events feuern
+            if (success) {
+                element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+            } else {
+                // Letzter Not-Fallback (execCommand)
+                try {
+                    success = document.execCommand('insertText', false, text);
+                } catch (e) { }
             }
         }
 
-        // 4. Fallback: ContentEditable innerText (Last resort for complex editors)
-        if (!success && element.isContentEditable) {
-            try {
-                element.innerText = text;
-                success = true;
-            } catch (e) { }
-        }
-
-        // 5. TRIGGER EVENT-HEARTBEAT (Ensure framework synchronization)
+        // TRIGGER EVENT-HEARTBEAT
         if (success) {
-            // STABILITY FIX: We await the human simulation to ensure the site's framework (React/Vue)
-            // catches up, but we no longer let the background verification block the success report.
-            // This restores the fault-tolerant behavior that worked perfectly in previous versions.
             await this.triggerHumanSimulation(element);
-
-            // Background Verification (Diagnostic only)
             this.verifyInjection(element, text);
             return true;
         }
