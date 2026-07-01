@@ -196,7 +196,7 @@ export default function Sidebar({
         <NavItem
           icon={<LayoutGrid size={18} />}
           label="My Prompts"
-          active={currentView === 'library' && selectedTags.length === 0}
+          active={currentView === 'library'}
           collapsed={isCollapsed}
           onClick={() => { onViewChange('library'); }}
         />
