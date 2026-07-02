@@ -1330,7 +1330,7 @@ export default function KnowledgeTileEditor({
                         <div className="bg-bg-surface/30 border-t border-border py-1 px-3 text-[10px] text-text-faint flex justify-between items-center shrink-0 select-none">
                             {/* Anfänger-Hilfe (Links) */}
                             <span className="flex items-center gap-1.5 opacity-70 hover:opacity-100 transition-opacity truncate pr-4">
-                                Tip: Use <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">{"{{var}}"}</code> for inputs, <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">{"{{file: doc}}"}</code> for attachments, and <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">@</code> for Snippets.
+                                Tip: Use <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">{"{{var}}"}</code> for inputs, <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">{"{{file: doc}}"}</code> for attachments, <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">@</code> for Snippets, and <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">#</code> for Prompts.
                             </span>
 
                             {/* Power-User Cheat-Sheet (Rechts) */}
