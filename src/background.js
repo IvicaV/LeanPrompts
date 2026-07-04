@@ -1828,7 +1828,10 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
   // 1. Origin-Verifizierung (Ausschließlich HTTPS-Produktions- und Staging-Domains)
   const allowedOrigins = [
     "https://leanprompts-website.vercel.app",
-    "https://leanprompts.app"
+    "https://leanprompts.app",
+    "https://leanprompts-zenix.vercel.app",
+    "http://localhost:4321",
+    "http://localhost:3000"
   ];
   
   if (!allowedOrigins.includes(sender.origin)) {

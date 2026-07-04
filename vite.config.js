@@ -24,7 +24,10 @@ const manifest = defineManifest({
   externally_connectable: {
     matches: [
       "https://leanprompts-website.vercel.app/*",
-      "https://leanprompts.app/*"
+      "https://leanprompts.app/*",
+      "https://leanprompts-zenix.vercel.app/*",
+      "http://localhost:4321/*",
+      "http://localhost:3000/*"
     ]
   },
   commands: {
