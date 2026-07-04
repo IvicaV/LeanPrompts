@@ -1829,12 +1829,11 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
   const allowedOrigins = [
     "https://leanprompts-website.vercel.app",
     "https://leanprompts.app",
-    "https://leanprompts-zenix.vercel.app",
-    "http://localhost:4321",
-    "http://localhost:3000"
+    "https://leanprompts-zenix.vercel.app"
   ];
   
-  if (!allowedOrigins.includes(sender.origin)) {
+  const isAllowed = allowedOrigins.includes(sender.origin) || (sender.origin && sender.origin.startsWith("http://localhost"));
+  if (!isAllowed) {
     sendResponse({ success: false, error: "ACCESS_DENIED: Origin not whitelisted." });
     return;
   }

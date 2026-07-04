@@ -26,8 +26,7 @@ const manifest = defineManifest({
       "https://leanprompts-website.vercel.app/*",
       "https://leanprompts.app/*",
       "https://leanprompts-zenix.vercel.app/*",
-      "http://localhost:4321/*",
-      "http://localhost:3000/*"
+      "http://localhost/*"
     ]
   },
   commands: {
