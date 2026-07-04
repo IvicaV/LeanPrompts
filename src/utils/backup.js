@@ -19,7 +19,7 @@
  * GNU Affero General Public License for more details.
  * ============================================================================
  */
-import { dbAPI } from './db';
+import { dbAPI, initDB } from './db';
 
 // Helper um LocalStorage/ChromeStorage für LLMs zu holen
 async function getSystemData() {
@@ -207,7 +207,7 @@ export const backupManager = {
    */
   async createShadowBackup() {
     try {
-      const { initDB } = await import('./db');
+
       const db = await initDB();
       const snapshot = {
         meta: { app: "LeanPrompts", snapshotAt: new Date().toISOString() },
@@ -260,7 +260,7 @@ export const backupManager = {
       content.data = content.prompts;
     }
 
-    const { initDB } = await import('./db');
+
 
     // INITIALIZE RESULTS (Strict object structure for detailed reporting)
     const results = {
@@ -520,7 +520,7 @@ export const backupManager = {
     
     await chrome.storage.local.set({ lp_import_in_progress: { timestamp: Date.now() } });
     try {
-      const { initDB } = await import('./db');
+
       const db = await initDB();
       const tx = db.transaction(['prompts', 'snippets', 'knowledge', 'collections'], 'readwrite');
 
@@ -849,7 +849,7 @@ export const backupManager = {
   },
 
   async getRecentImports() {
-    const { initDB } = await import('./db');
+
     const db = await initDB();
     const prompts = await db.getAll('prompts');
 
@@ -899,7 +899,7 @@ export const backupManager = {
   async undoWorkflowImport(importSessionId) {
     if (!importSessionId) return false;
 
-    const { initDB } = await import('./db');
+
     const db = await initDB();
 
     const stores = ['prompts', 'snippets', 'knowledge'];
