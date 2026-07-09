@@ -1829,6 +1829,7 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
   const allowedOrigins = [
     "https://leanprompts-website.vercel.app",
     "https://leanprompts.app",
+    "https://www.leanprompts.app", // WICHTIG: Explizit erlauben
     "https://leanprompts-zenix.vercel.app"
   ];
   
