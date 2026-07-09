@@ -1872,4 +1872,21 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
     })();
     return true; // Hält den asynchronen Antwortkanal offen
   }
+
+  if (request.action === "GET_INSTALLED_WORKFLOW_IDS") {
+    (async () => {
+      try {
+        const prompts = await dbAPI.getAllPrompts();
+        const installedWorkflows = (prompts || []).map(p => ({
+          id: p.id,
+          title: p.title || ""
+        }));
+        sendResponse({ success: true, installedWorkflows });
+      } catch (err) {
+        console.error("LeanPrompts: Failed to get installed workflow IDs", err);
+        sendResponse({ success: false, error: "Failed to get installed workflows: " + err.message });
+      }
+    })();
+    return true; // Hält den asynchronen Antwortkanal offen
+  }
 });
