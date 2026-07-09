@@ -1877,16 +1877,17 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
     (async () => {
       try {
         const prompts = await dbAPI.getAllPrompts();
+        // Map prompts directly to an array of objects containing id and title
         const installedWorkflows = (prompts || []).map(p => ({
           id: p.id,
-          title: p.title || ""
+          title: p.title
         }));
         sendResponse({ success: true, installedWorkflows });
       } catch (err) {
-        console.error("LeanPrompts: Failed to get installed workflow IDs", err);
-        sendResponse({ success: false, error: "Failed to get installed workflows: " + err.message });
+        console.error("[Handshake] Error reading prompts:", err);
+        sendResponse({ success: false, error: err.message });
       }
     })();
-    return true; // Hält den asynchronen Antwortkanal offen
+    return true; // Keep asynchronous channel open
   }
 });
