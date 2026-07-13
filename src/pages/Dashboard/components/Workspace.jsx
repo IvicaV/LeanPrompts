@@ -26,6 +26,7 @@ import { Share2, Download, Eye, EyeOff, Save, Check, Trash2, Copy, ArrowUp, Arro
 import PromptEditor from '../../../components/PromptEditor';
 import TagInput from '../../../components/TagInput';
 import MultiTaggerModal from '../../../components/MultiTaggerModal';
+import CommunityShareModal from './CommunityShareModal';
 import SuggestionBar from './SuggestionBar';
 import usePromptStore from '../../../stores/promptStore';
 import { getInjectionTooltip } from '../../../utils/llmConstants';
@@ -54,8 +55,9 @@ export default function Workspace({
     tags,
     isDarkMode
 }) {
-    const { collections, saveCollection, deleteTag, savePrompt } = usePromptStore();
+    const { collections, saveCollection, deleteTag, savePrompt, knowledgeTiles } = usePromptStore();
     const [showMoreMenu, setShowMoreMenu] = React.useState(false);
+    const [isCommunityShareOpen, setIsCommunityShareOpen] = React.useState(false);
     const [showLightbox, setShowLightbox] = React.useState(false);
     const [showCollectionMenu, setShowCollectionMenu] = React.useState(false);
     const [collectionPopupPos, setCollectionPopupPos] = React.useState({ top: 0, left: 0 }); // <-- NEU
@@ -573,6 +575,12 @@ export default function Workspace({
                                             className="w-full flex items-center gap-2 px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors"
                                         >
                                             <Package size={14} /> Export Workflow Bundle
+                                        </button>
+                                        <button
+                                            onClick={() => { setIsCommunityShareOpen(true); setShowMoreMenu(false); }}
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors"
+                                        >
+                                            <Share2 size={12} /> Share to Community Hub
                                         </button>
                                         <div className="h-px bg-border my-1"></div>
                                         <button
@@ -1197,6 +1205,15 @@ export default function Workspace({
                 allTags={tags}
                 currentTags={activePrompt.tags || []}
                 onSave={onTagsChange}
+            />
+
+            <CommunityShareModal
+                isOpen={isCommunityShareOpen}
+                onClose={() => setIsCommunityShareOpen(false)}
+                prompt={activePrompt}
+                snippets={snippets}
+                knowledgeTiles={knowledgeTiles}
+                onNotification={onNotification}
             />
 
             {createPortal(
