@@ -335,6 +335,9 @@ export const backupManager = {
             results.snippets.added++;
           }
           let cleanedSnippet = { ...s };
+          if (!cleanedSnippet.updatedAt) {
+            cleanedSnippet.updatedAt = new Date().toISOString();
+          }
           if (!options.history) {
             cleanedSnippet.versions = [];
           }
@@ -650,6 +653,10 @@ export const backupManager = {
           // to prevent future "Smart Merge" from treating them as the exact same snippet 
           // if the user edits it locally, but for now we keep the ID so it merges cleanly 
           // if imported again.
+        }
+
+        if (!s.updatedAt) {
+          s.updatedAt = new Date().toISOString();
         }
 
         attachImportMeta(s);
