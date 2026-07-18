@@ -379,6 +379,12 @@ export const backupManager = {
         if (isSmart) {
           // Smart Merge: Newest Wins
           for (const t of content.knowledgeBase) {
+            if (!t.updatedAt) {
+              t.updatedAt = new Date().toISOString();
+            }
+            if (!t.createdAt) {
+              t.createdAt = t.updatedAt;
+            }
             const localExisting = await store.get(t.id);
             if (localExisting) {
               if (isIncomingNewer(localExisting, t)) {
@@ -396,6 +402,12 @@ export const backupManager = {
           // Full Restore: Replace All
           await store.clear();
           for (const t of content.knowledgeBase) {
+            if (!t.updatedAt) {
+              t.updatedAt = new Date().toISOString();
+            }
+            if (!t.createdAt) {
+              t.createdAt = t.updatedAt;
+            }
             await store.put(t);
           }
           results.knowledge.added = content.knowledgeBase.length;
@@ -680,6 +692,13 @@ export const backupManager = {
           k.title = `${k.title} (imported)`;
           k.id = crypto.randomUUID();
           kbRenames.push({ oldTitle, newTitle: k.title });
+        }
+
+        if (!k.updatedAt) {
+          k.updatedAt = new Date().toISOString();
+        }
+        if (!k.createdAt) {
+          k.createdAt = k.updatedAt;
         }
 
         attachImportMeta(k);
