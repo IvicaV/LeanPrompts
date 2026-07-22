@@ -2376,11 +2376,9 @@ export default function SnippetLibrary({
 
                         {/* 2. CONTENT */}
                         <div className="p-8 bg-[#18181b]">
-                            <div className="prose prose-invert max-w-none prose-pre:bg-[#09090b] prose-pre:border prose-pre:border-white/10 prose-p:leading-relaxed">
-                                <pre className="font-mono text-[13px] text-[#e4e4e7] leading-7 whitespace-pre-wrap bg-transparent border-0 p-0 m-0">
-                                    {editContent}
-                                </pre>
-                            </div>
+                            <pre className="font-mono text-[13px] text-[#e4e4e7] leading-7 whitespace-pre-wrap bg-transparent !bg-transparent border-0 p-0 m-0">
+                                {editContent}
+                            </pre>
                         </div>
 
                         {/* 3. STATUS BAR (Branding) */}
