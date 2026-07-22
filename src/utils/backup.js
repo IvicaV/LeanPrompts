@@ -720,6 +720,23 @@ export const backupManager = {
         const pStore = tx.objectStore('prompts');
         let p = finalData.prompt;
 
+        const originalPromptId = p.id;
+        let finalPromptId = p.id;
+        let isUpdate = false;
+        let existingPrompt = null;
+
+        if (finalData.updateIntent && finalData.updateIntent.existingPromptId) {
+          existingPrompt = await pStore.get(finalData.updateIntent.existingPromptId);
+          if (existingPrompt) {
+            isUpdate = true;
+            finalPromptId = existingPrompt.id;
+          }
+        }
+
+        if (!isUpdate) {
+          finalPromptId = crypto.randomUUID();
+        }
+
         // Helper string replace function
         const updateText = (text) => {
           if (!text) return text;
@@ -747,6 +764,11 @@ export const backupManager = {
             newText = newText.replace(regex, `[[${newTitle}]]`);
           });
 
+          if (originalPromptId !== finalPromptId) {
+            const regex = new RegExp(`\\[\\[prompt:${escapeRegExp(originalPromptId)}\\]\\]`, 'g');
+            newText = newText.replace(regex, `[[prompt:${finalPromptId}]]`);
+          }
+
           return newText;
         };
 
@@ -762,19 +784,14 @@ export const backupManager = {
         }
 
         // INTELLIGENT UPDATE vs DUPLICATE LOGIC
-        if (finalData.updateIntent && finalData.updateIntent.existingPromptId) {
-          // User requested an update. Fetch the existing prompt.
-          const existingPrompt = await pStore.get(finalData.updateIntent.existingPromptId);
-
-          if (existingPrompt) {
+        if (isUpdate && existingPrompt) {
             // 1. Create an Auto-Snapshot of the existing state
             const snapshotVersion = {
               id: crypto.randomUUID(),
               content: existingPrompt.content,
-              presets: existingPrompt.presets ? JSON.parse(JSON.stringify(existingPrompt.presets)) : null, // Record state for 1:1 rollback
-              timestamp: new Date().toISOString(), // Use timestamp to match snippet versions UI
-              note: `Auto-Snapshot before Bundle Update`, // UI actually expects 'note' not 'label'
-              // TAG the snapshot so the rollback function can find it and restore it
+              presets: existingPrompt.presets ? JSON.parse(JSON.stringify(existingPrompt.presets)) : null,
+              timestamp: new Date().toISOString(),
+              note: `Auto-Snapshot before Bundle Update`,
               importSessionId: importSessionId
             };
 
@@ -795,7 +812,6 @@ export const backupManager = {
 
             // 2. Overwrite the necessary fields with the incoming data
             existingPrompt.content = p.content;
-            // Important: we don't overwrite title, id, createdAt, isPinned, rating, etc.
             if (p.notes) existingPrompt.notes = p.notes;
 
             // Non-Destructive Preset Merge
@@ -816,9 +832,6 @@ export const backupManager = {
               const oldVersions = existingPrompt.chain[0].versions;
               const originalStepId = existingPrompt.chain[0].id;
 
-              // WeMUST map the incoming first step to match the local first step ID.
-              // Otherwise, the UI's `activeStepId` gets orphaned, causing histories to visually disappear 
-              // and future saves to fail.
               p.chain[0].id = originalStepId;
               p.chain[0].versions = oldVersions;
 
@@ -830,26 +843,10 @@ export const backupManager = {
             existingPrompt.updatedAt = new Date().toISOString();
             existingPrompt.isBlueprint = true;
 
-            // Do NOT attach global import meta to the prompt object itself, 
-            // otherwise a rollback would DELETE the entire prompt.
-            // The import meta is safely inside the snapshot version.
-
             await pStore.put(existingPrompt);
-          } else {
-            console.warn("Intelligent Update failed: Original prompt not found. Falling back to duplicate.");
-            // Fallback to duplicate (below)
-            p.id = crypto.randomUUID();
-            p.title = `${p.title} (imported)`;
-            p.updatedAt = new Date().toISOString();
-            p.isBlueprint = true;
-            attachImportMeta(p);
-            await pStore.put(p);
-          }
-
         } else {
           // STANDARD DUPLICATE LOGIC
-          // Give the imported prompt a fresh ID and flag it so it doesn't overwrite local variants
-          p.id = crypto.randomUUID();
+          p.id = finalPromptId;
           p.title = `${p.title} (imported)`;
           p.updatedAt = new Date().toISOString();
           p.isBlueprint = true;
