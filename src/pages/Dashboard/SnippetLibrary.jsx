@@ -2347,7 +2347,7 @@ export default function SnippetLibrary({
             />
 
             {/* OFF-SCREEN CINEMATIC RENDER CONTAINER (FOR PNG EXPORT) */}
-            <div className="absolute top-[-9999px] left-[-9999px] pointer-events-none opacity-0">
+            <div className="absolute top-[-9999px] left-[-9999px] pointer-events-none opacity-100">
                 {/* WRAPPER (Canvas) - Matches Prompt Export */}
                 <div 
                     ref={exportRef} 

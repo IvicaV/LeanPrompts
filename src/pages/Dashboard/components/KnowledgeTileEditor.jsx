@@ -1404,7 +1404,7 @@ export default function KnowledgeTileEditor({
             )}
 
             {/* HIDDEN EXPORT CONTAINER */}
-            <div className="absolute top-[-9999px] left-[-9999px] pointer-events-none opacity-0">
+            <div className="absolute top-[-9999px] left-[-9999px] pointer-events-none opacity-100">
                 <div
                     ref={exportRef}
                     className="w-[800px] bg-gradient-to-br from-zinc-800 to-zinc-950 p-12 rounded-xl border border-white/5 shadow-2xl flex flex-col"

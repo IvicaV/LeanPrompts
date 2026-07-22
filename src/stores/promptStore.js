@@ -1439,6 +1439,13 @@ const usePromptStore = create((set, get) => ({
       ]);
     }
 
+    // Set active selection states to null to prevent phantom draft re-injection
+    set({
+      activePromptId: null,
+      activeSnippetId: null,
+      activeCollectionId: null,
+    });
+
     // 3. Re-seed the onboarding / tutorial data
     await dbAPI.seedIfEmpty(SEED_PROMPTS, SEED_SNIPPETS);
 
