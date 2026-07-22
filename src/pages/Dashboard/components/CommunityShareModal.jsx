@@ -35,12 +35,29 @@ export default function CommunityShareModal({ isOpen, onClose, prompt, snippets,
         return scanWorkflowDependencies(prompt, snippets || [], knowledgeTiles || []);
     }, [prompt, snippets, knowledgeTiles, isOpen]);
 
+    // --- 100% BULLETPROOF SMART DETECTORS (READ-ONLY) ---
+    const hasNotes = useMemo(() => {
+        if (!prompt) return false;
+        return prompt.chain?.some(step => step.notes && step.notes.trim() !== "") || false;
+    }, [prompt]);
+
+    const hasHistory = useMemo(() => {
+        if (!prompt) return false;
+        return prompt.chain?.some(step => step.versions && step.versions.length > 0) || (prompt.versions && prompt.versions.length > 0);
+    }, [prompt]);
+
+    const hasPresets = useMemo(() => {
+        if (!prompt) return false;
+        return prompt.presets && Object.keys(prompt.presets).length > 0;
+    }, [prompt]);
+
     // Initial Sync
     useEffect(() => {
         if (isOpen) {
             setPublishSuccess(false);
             setDescription('');
             setIsPublishing(false);
+            setIncludeNotes(hasNotes);
             setIncludeHistory(false); // Default false for performance
             setIncludePresets(false); // Default false for security
             
@@ -49,7 +66,7 @@ export default function CommunityShareModal({ isOpen, onClose, prompt, snippets,
             dependencies.knowledgeBase.forEach(kb => allIds.add(kb.id));
             setSelectedDependencies(allIds);
         }
-    }, [isOpen, dependencies]);
+    }, [isOpen]);
 
     if (!isOpen || !prompt) return null;
 
@@ -235,21 +252,30 @@ export default function CommunityShareModal({ isOpen, onClose, prompt, snippets,
 
                                 {/* Output Granularity (UNLOCKED EDITION) */}
                                 <div className="space-y-1 bg-bg-surface border border-border rounded-lg p-2.5">
-                                    <div className="flex items-center gap-3 py-1 cursor-pointer transition-colors duration-200" onClick={() => setIncludeNotes(!includeNotes)}>
-                                        <div className={includeNotes ? 'text-primary' : 'text-text-faint'}>
-                                            {includeNotes ? <CheckSquare size={14} /> : <Square size={14} />}
+                                    <div 
+                                        className={`flex items-center gap-3 py-1.5 px-2 rounded-lg transition-colors duration-200 ${hasNotes ? 'cursor-pointer hover:bg-bg-hover' : 'opacity-40 cursor-not-allowed'}`} 
+                                        onClick={() => hasNotes && setIncludeNotes(!includeNotes)}
+                                    >
+                                        <div className={includeNotes && hasNotes ? 'text-primary' : 'text-text-faint'}>
+                                            {includeNotes && hasNotes ? <CheckSquare size={14} /> : <Square size={14} />}
                                         </div>
                                         <span className="text-xs font-medium text-text-main">Include Notes (Workflow instructions)</span>
                                     </div>
-                                    <div className="flex items-center gap-3 py-1 cursor-pointer transition-colors duration-200" onClick={() => setIncludeHistory(!includeHistory)}>
-                                        <div className={includeHistory ? 'text-primary' : 'text-text-faint'}>
-                                            {includeHistory ? <CheckSquare size={14} /> : <Square size={14} />}
+                                    <div 
+                                        className={`flex items-center gap-3 py-1.5 px-2 rounded-lg transition-colors duration-200 ${hasHistory ? 'cursor-pointer hover:bg-bg-hover' : 'opacity-40 cursor-not-allowed'}`} 
+                                        onClick={() => hasHistory && setIncludeHistory(!includeHistory)}
+                                    >
+                                        <div className={includeHistory && hasHistory ? 'text-primary' : 'text-text-faint'}>
+                                            {includeHistory && hasHistory ? <CheckSquare size={14} /> : <Square size={14} />}
                                         </div>
                                         <span className="text-xs font-medium text-text-main">Include Version History (Snapshots)</span>
                                     </div>
-                                    <div className="flex items-center gap-3 py-1 cursor-pointer transition-colors duration-200" onClick={() => setIncludePresets(!includePresets)}>
-                                        <div className={includePresets ? 'text-primary' : 'text-text-faint'}>
-                                            {includePresets ? <CheckSquare size={14} /> : <Square size={14} />}
+                                    <div 
+                                        className={`flex items-center gap-3 py-1.5 px-2 rounded-lg transition-colors duration-200 ${hasPresets ? 'cursor-pointer hover:bg-bg-hover' : 'opacity-40 cursor-not-allowed'}`} 
+                                        onClick={() => hasPresets && setIncludePresets(!includePresets)}
+                                    >
+                                        <div className={includePresets && hasPresets ? 'text-primary' : 'text-text-faint'}>
+                                            {includePresets && hasPresets ? <CheckSquare size={14} /> : <Square size={14} />}
                                         </div>
                                         <span className="text-xs font-medium text-text-main">Include Variable Presets</span>
                                     </div>
