@@ -457,7 +457,7 @@ export default function NoteEditor({
               e.stopPropagation();
               if (item) onNavigate({ type, id: item.id, tab: type === 'snippet' ? 'notes' : undefined });
             }}
-            className={`inline-block max-w-full truncate align-bottom px-1 py-0.5 rounded text-xs font-medium transition-all ${item
+            className={`inline-block max-w-[calc(100%-12px)] truncate align-bottom px-1 py-0.5 rounded text-xs font-medium transition-all ${item
               ? type === 'snippet' 
                 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 hover:underline cursor-pointer'
                 : 'bg-primary/15 text-primary hover:bg-primary/25 hover:underline cursor-pointer'
