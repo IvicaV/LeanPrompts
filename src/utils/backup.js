@@ -299,6 +299,9 @@ export const backupManager = {
           }
 
           let cleanedPrompt = { ...p };
+          if (content.meta?.type === 'workflow_bundle' || p.isBlueprint || p.importSessionId) {
+            cleanedPrompt.isBlueprint = true;
+          }
           if (!options.history) {
             cleanedPrompt.versions = [];
             if (cleanedPrompt.chain) cleanedPrompt.chain = cleanedPrompt.chain.map(s => ({ ...s, versions: [] }));
@@ -825,6 +828,7 @@ export const backupManager = {
             }
 
             existingPrompt.updatedAt = new Date().toISOString();
+            existingPrompt.isBlueprint = true;
 
             // Do NOT attach global import meta to the prompt object itself, 
             // otherwise a rollback would DELETE the entire prompt.
@@ -837,6 +841,7 @@ export const backupManager = {
             p.id = crypto.randomUUID();
             p.title = `${p.title} (imported)`;
             p.updatedAt = new Date().toISOString();
+            p.isBlueprint = true;
             attachImportMeta(p);
             await pStore.put(p);
           }
@@ -847,6 +852,7 @@ export const backupManager = {
           p.id = crypto.randomUUID();
           p.title = `${p.title} (imported)`;
           p.updatedAt = new Date().toISOString();
+          p.isBlueprint = true;
 
           attachImportMeta(p);
           await pStore.put(p);

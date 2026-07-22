@@ -1355,9 +1355,12 @@ const initiateWorkflow = async (promptId) => {
   };
 
   const filteredSuggestions = useMemo(() => {
+    const isBlueprintPrompt = activePrompt?.isBlueprint || !!activePrompt?.importSessionId || !!activePrompt?.importedAt;
+    if (isBlueprintPrompt) return [];
+
     const ignored = activePrompt?.ignoredVariables || [];
     return syntaxSuggestions.filter(s => !ignored.includes(s.text));
-  }, [syntaxSuggestions, activePrompt?.ignoredVariables]);
+  }, [syntaxSuggestions, activePrompt?.ignoredVariables, activePrompt?.isBlueprint, activePrompt?.importSessionId, activePrompt?.importedAt]);
 
   const applyTheme = (theme) => {
     const isDark = theme === 'dark';
