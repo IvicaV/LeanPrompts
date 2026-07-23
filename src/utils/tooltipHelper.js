@@ -35,7 +35,10 @@ export function formatTooltipDate(isoString) {
 export function getItemTooltip(item, customTitle) {
   if (!item) return customTitle || '';
   const title = customTitle !== undefined ? customTitle : (item.title || (item.name ? `@${item.name}` : ''));
-  const created = formatTooltipDate(item.createdAt);
+  
+  // Safe Fallback: If createdAt is missing on legacy snippet records, fallback to updatedAt
+  const createdDate = item.createdAt || item.updatedAt;
+  const created = formatTooltipDate(createdDate);
   const modified = formatTooltipDate(item.updatedAt);
   
   const parts = [];

@@ -239,6 +239,7 @@ const usePromptStore = create((set, get) => ({
           ...s,
           isPinned: s.isPinned || false,
           rating: s.rating || 0,
+          createdAt: s.createdAt || s.updatedAt || new Date().toISOString(),
           updatedAt: s.updatedAt || new Date().toISOString(),
           versions: s.versions || [] // Ensure versions array exists
         })), initialSnippetSortMode),
@@ -754,11 +755,13 @@ const usePromptStore = create((set, get) => ({
       }
     }
 
+    const now = new Date().toISOString();
     const newSnippet = {
       ...(existing || {}), // PROTECTION: Preserve isPinned, rating, etc. from existing record
       ...snippetData,
       versions,
-      updatedAt: new Date().toISOString(),
+      createdAt: (existing && existing.createdAt) || snippetData.createdAt || now,
+      updatedAt: now,
       usageCount: snippetData.usageCount || (existing ? existing.usageCount : 0)
     };
 
