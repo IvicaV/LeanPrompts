@@ -23,6 +23,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Command, FileText, Blocks, ArrowRight, ShieldCheck, Globe } from 'lucide-react';
 import useBodyLock from '../hooks/useBodyLock';
+import { getItemTooltip } from '../utils/tooltipHelper';
 
 export default function CommandPalette({ isOpen, onClose, prompts, snippets, onSelect }) {
     useBodyLock();
@@ -162,7 +163,7 @@ export default function CommandPalette({ isOpen, onClose, prompts, snippets, onS
                                                             <ShieldCheck size={16} />}
                                                 </div>
                                                 <div className="text-left min-w-0">
-                                                    <div className={`text-sm font-bold truncate ${selectedIndex === index ? 'text-text-main' : ''}`}>
+                                                    <div className={`text-sm font-bold truncate ${selectedIndex === index ? 'text-text-main' : ''}`} title={getItemTooltip(item)}>
                                                         {item.type === 'snippet' ? `@${item.name}` : item.title}
                                                     </div>
                                                     <div className="text-[10px] opacity-60 truncate font-mono">

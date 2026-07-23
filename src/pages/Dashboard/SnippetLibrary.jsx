@@ -22,6 +22,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import usePromptStore from '../../stores/promptStore';
+import { getItemTooltip } from '../../utils/tooltipHelper';
 import {
     Plus, Search, Trash2, X, Sparkles, LayoutGrid, Info, Check, Save, Send, Blocks, Link, Zap,
     Pin, Star, ChevronDown, Clock, SortAsc, ArrowUpDown, Folder, Tag, Tags, Copy,
@@ -1066,7 +1067,7 @@ export default function SnippetLibrary({
                                                 <div className="min-w-0 flex-1 flex flex-col gap-1">
                                                     <div className="flex items-center gap-1.5 pr-20">
                                                         {s.isPinned && <Pin size={10} className="text-primary fill-primary shrink-0" />}
-                                                        <span className="text-snippet-accent dark:text-amber-400 font-mono text-sm font-bold truncate min-w-0" title={s.name}>@{s.name}</span>
+                                                        <span className="text-snippet-accent dark:text-amber-400 font-mono text-sm font-bold truncate min-w-0" title={getItemTooltip(s, `@${s.name}`)}>@{s.name}</span>
                                                         {snippetRefCounts[s.id] > 0 && (
                                                             <button
                                                                 onClick={(e) => {

@@ -28,6 +28,7 @@ import TagInput from '../../../components/TagInput';
 import MultiTaggerModal from '../../../components/MultiTaggerModal';
 import CommunityShareModal from './CommunityShareModal';
 import SuggestionBar from './SuggestionBar';
+import { getItemTooltip } from '../../../utils/tooltipHelper';
 import usePromptStore from '../../../stores/promptStore';
 import { getInjectionTooltip } from '../../../utils/llmConstants';
 import { Tags } from 'lucide-react';
@@ -514,7 +515,7 @@ export default function Workspace({
                                 onFocus={(e) => e.target.select()}
                                 className="bg-transparent text-xl font-bold text-text-main focus:outline-none w-full placeholder:text-text-muted/50 truncate"
                                 placeholder="Untitled Prompt"
-                                title={localTitle}
+                                title={getItemTooltip(activePrompt, localTitle)}
                             />
                         </div>
                     </div>

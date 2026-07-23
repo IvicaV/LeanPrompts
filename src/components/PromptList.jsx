@@ -28,6 +28,7 @@ import Rating from './Rating';
 import BulkActionBar from './BulkActionBar';
 import TagEditorPopover from './TagEditorPopover';
 import DynamicTagList from './DynamicTagList';
+import { getItemTooltip } from '../utils/tooltipHelper';
 
 // =========================================================================
 // [PROTECTED: ZERO-REGRESSION PERFORMANCE SHIELD]
@@ -88,7 +89,7 @@ const PromptCard = memo(({
                                     />
                                 )}
                                 <div
-                                    title={prompt.title}
+                                    title={getItemTooltip(prompt)}
                                     className={`font-medium text-sm truncate ${isActive ? 'text-primary' : 'text-text-main'}`}
                                 >
                                     {prompt.title}
