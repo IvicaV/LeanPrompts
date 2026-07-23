@@ -60,6 +60,7 @@ export default function LibraryPanel({
   const [showSort, setShowSort] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+  const [createMenuPos, setCreateMenuPos] = useState({ top: 0, right: 0 });
   const sortBtnRef = useRef(null);
   const createBtnRef = useRef(null);
 
@@ -80,6 +81,14 @@ export default function LibraryPanel({
       setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
     }
     setShowSort(prev => !prev);
+  };
+
+  const handleOpenCreateMenu = () => {
+    if (!showCreateMenu && createBtnRef.current) {
+      const rect = createBtnRef.current.getBoundingClientRect();
+      setCreateMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setShowCreateMenu(prev => !prev);
   };
 
   const sortOptions = [
@@ -126,65 +135,18 @@ export default function LibraryPanel({
             <ArrowUpDown size={16} />
           </button>
 
-          <div className="relative">
-            <button
-              ref={createBtnRef}
-              onClick={() => setShowCreateMenu(!showCreateMenu)}
-              className={`p-1.5 rounded-md transition-colors border ${
-                showCreateMenu 
-                  ? 'bg-primary/10 border-primary/20 text-primary' 
-                  : 'hover:bg-bg-hover text-primary border-transparent hover:border-border'
-              }`}
-              title="Create or import prompt"
-            >
-              <Plus size={18} />
-            </button>
-
-            {showCreateMenu && (
-              <>
-                <div className="fixed inset-0 z-[9998]" onClick={() => setShowCreateMenu(false)} />
-                <div 
-                  className="absolute right-0 top-full mt-1.5 w-52 bg-bg-surface border border-border rounded-xl shadow-2xl z-[9999] p-1 animate-in fade-in zoom-in-95 duration-150 dm-dropdown"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="px-2.5 py-1.5 mb-1 border-b border-border/50 flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-text-faint uppercase tracking-wider">Add Content</span>
-                    <button 
-                      onClick={() => setShowCreateMenu(false)} 
-                      className="text-text-muted hover:text-text-main p-0.5 rounded hover:bg-bg-hover"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setShowCreateMenu(false);
-                      onCreate();
-                    }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-text-main hover:bg-bg-hover transition-colors text-left"
-                  >
-                    <Plus size={14} className="text-primary shrink-0" />
-                    <span>New Blank Prompt</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowCreateMenu(false);
-                      window.open("https://leanprompts.app/explore/", "_blank");
-                    }}
-                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Globe size={14} className="text-indigo-400 shrink-0" />
-                      <span>Browse Workflow Hub</span>
-                    </div>
-                    <span className="text-[10px] text-text-faint font-mono">↗</span>
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          <button
+            ref={createBtnRef}
+            onClick={handleOpenCreateMenu}
+            className={`p-1.5 rounded-md transition-colors border ${
+              showCreateMenu 
+                ? 'bg-primary/10 border-primary/20 text-primary' 
+                : 'hover:bg-bg-hover text-primary border-transparent hover:border-border'
+            }`}
+            title="Create or import prompt"
+          >
+            <Plus size={18} />
+          </button>
         </div>
       </div>
 
@@ -212,6 +174,54 @@ export default function LibraryPanel({
                 {sortMode === opt.id && <Check size={12} className="text-primary" />}
               </button>
             ))}
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* Creation Menu - Portal into document.body to escape overflow-hidden + stacking contexts */}
+      {showCreateMenu && ReactDOM.createPortal(
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setShowCreateMenu(false)} />
+          <div 
+            className="fixed w-52 bg-bg-surface border border-border rounded-xl shadow-2xl z-[9999] p-1 animate-in fade-in zoom-in-95 duration-150 dm-dropdown"
+            style={{ top: createMenuPos.top, right: createMenuPos.right }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-2.5 py-1.5 mb-1 border-b border-border/50 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-text-faint uppercase tracking-wider">Add Content</span>
+              <button 
+                onClick={() => setShowCreateMenu(false)} 
+                className="text-text-muted hover:text-text-main p-0.5 rounded hover:bg-bg-hover"
+              >
+                <X size={12} />
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowCreateMenu(false);
+                onCreate();
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-text-main hover:bg-bg-hover transition-colors text-left"
+            >
+              <Plus size={14} className="text-primary shrink-0" />
+              <span>New Blank Prompt</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setShowCreateMenu(false);
+                window.open("https://leanprompts.app/explore/", "_blank");
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors text-left"
+            >
+              <div className="flex items-center gap-2.5">
+                <Globe size={14} className="text-indigo-400 shrink-0" />
+                <span>Browse Workflow Hub</span>
+              </div>
+              <span className="text-[10px] text-text-faint font-mono">↗</span>
+            </button>
           </div>
         </>,
         document.body
