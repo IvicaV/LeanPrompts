@@ -27,7 +27,7 @@ import {
   Plus, Command, LayoutGrid, Settings, Trash2, Eye, EyeOff,
   History, Sparkles, Save, Check, Hash, X, Share2, Github, Coffee,
   Sun, Moon, StickyNote, Send, MessageSquare, Copy, ArrowUp, ArrowDown, AlertCircle, CheckCircle2,
-  Wand2, ChevronLeft, ChevronRight, BookOpen, Lightbulb, ExternalLink, MoveRight, FileText
+  Wand2, ChevronLeft, ChevronRight, BookOpen, Lightbulb, ExternalLink, MoveRight, FileText, Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -2702,6 +2702,8 @@ const initiateWorkflow = async (promptId) => {
             showNotification("Full Backup successful", "success");
           }
         });
+      } else if (item.id === 'action-open-hub') {
+        window.open("https://leanprompts.app", "_blank");
       }
     }
   };
@@ -2991,21 +2993,55 @@ const initiateWorkflow = async (promptId) => {
                         isDarkMode={isDarkMode}
                       />
                     ) : (
-                      <div className="flex-1 flex items-center justify-center text-text-muted flex-col gap-6 select-none">
-                        <LayoutGrid size={64} strokeWidth={1} className="opacity-40" />
-                        {prompts.length === 0 ? (
-                          <div className="flex flex-col items-center gap-4 animate-fade-in">
-                            <p className="text-sm font-medium opacity-60">Your library is empty.</p>
+                      /* MINIMALIST IDE WORKSPACE EMPTY STATE */
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 select-none bg-bg text-center">
+                        <div className="max-w-xs space-y-4">
+                          
+                          {/* Subtle IDE Icon Header */}
+                          <div className="mx-auto w-10 h-10 rounded-xl bg-bg-surface border border-border flex items-center justify-center text-text-muted">
+                            <LayoutGrid size={20} strokeWidth={1.5} />
+                          </div>
+
+                          {/* Typography */}
+                          <div className="space-y-1">
+                            <h3 className="text-sm font-bold text-text-main uppercase tracking-wider">
+                              {prompts.length === 0 ? "Library Empty" : "No Prompt Selected"}
+                            </h3>
+                            <p className="text-xs text-text-muted leading-relaxed">
+                              {prompts.length === 0
+                                ? "Create your first prompt or import templates from the community hub."
+                                : "Select an item from your library, press "}
+                              {prompts.length > 0 && (
+                                <kbd className="px-1.5 py-0.5 bg-bg-elevated border border-border rounded text-[10px] font-mono font-bold text-text-main">
+                                  Ctrl+K
+                                </kbd>
+                              )}
+                              {prompts.length > 0 && " to search, or explore workflows."}
+                            </p>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="pt-2 flex justify-center gap-2">
                             <button
                               onClick={handleCreate}
-                              className="px-6 py-2.5 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover transition-all active:scale-95 shadow-lg shadow-primary/20"
+                              className="px-3.5 py-1.5 bg-bg-elevated hover:bg-bg-hover border border-border hover:border-text-muted/40 text-xs font-semibold text-text-main rounded-lg transition-colors flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                             >
-                              Create your first Prompt
+                              <Plus size={14} className="text-primary shrink-0" />
+                              <span>{prompts.length === 0 ? "Create Prompt" : "New Prompt"}</span>
+                            </button>
+
+                            <button
+                              onClick={() => window.open("https://leanprompts.app", "_blank")}
+                              className="px-3.5 py-1.5 bg-bg-elevated hover:bg-bg-hover border border-border hover:border-text-muted/40 text-xs font-semibold text-text-muted hover:text-text-main rounded-lg transition-colors flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                              title="Browse leanprompts.app"
+                            >
+                              <Globe size={13} className="text-indigo-400 shrink-0" />
+                              <span>Workflow Hub</span>
+                              <span className="text-[10px] text-text-faint font-mono">↗</span>
                             </button>
                           </div>
-                        ) : (
-                          <p className="text-sm font-medium opacity-40">Select a prompt to start editing</p>
-                        )}
+
+                        </div>
                       </div>
                     )}
                   </motion.div>

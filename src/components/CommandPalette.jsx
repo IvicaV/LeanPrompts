@@ -21,7 +21,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Command, FileText, Blocks, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Search, Command, FileText, Blocks, ArrowRight, ShieldCheck, Globe } from 'lucide-react';
 import useBodyLock from '../hooks/useBodyLock';
 
 export default function CommandPalette({ isOpen, onClose, prompts, snippets, onSelect }) {
@@ -42,6 +42,13 @@ export default function CommandPalette({ isOpen, onClose, prompts, snippets, onS
                 type: 'action',
                 icon: 'backup',
                 content: 'Create a full system backup (JSON)'
+            },
+            {
+                id: 'action-open-hub',
+                title: 'Browse Workflow Hub (leanprompts.app)',
+                type: 'action',
+                icon: 'hub',
+                content: 'Explore and import verified community templates and chains'
             }
         ];
 
@@ -151,6 +158,7 @@ export default function CommandPalette({ isOpen, onClose, prompts, snippets, onS
                                                     }`}>
                                                     {item.type === 'prompt' ? <FileText size={16} /> :
                                                         item.type === 'snippet' ? <Blocks size={16} /> :
+                                                        item.icon === 'hub' ? <Globe size={16} /> :
                                                             <ShieldCheck size={16} />}
                                                 </div>
                                                 <div className="text-left min-w-0">

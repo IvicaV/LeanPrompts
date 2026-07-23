@@ -21,7 +21,7 @@
  */
 import React, { useState, useRef, useEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
-import { Trash2, Check, Copy, Pin, Star, Folder, ChevronDown, Plus, X, Tag, BookOpen, Layers, Search, MoreVertical } from 'lucide-react';
+import { Trash2, Check, Copy, Pin, Star, Folder, ChevronDown, Plus, X, Tag, BookOpen, Layers, Search, MoreVertical, Globe } from 'lucide-react';
 import usePromptStore from '../stores/promptStore';
 import { compilePrompt, resolveSnippets } from '../utils/variableParser';
 import Rating from './Rating';
@@ -621,12 +621,23 @@ export default function PromptList({
                     {prompts.length === 0 ? (
                         <div className="p-8 text-center text-sm select-none text-text-muted">
                             {(allPrompts && allPrompts.length > 0) ? (
-                                <div className="flex flex-col items-center gap-2 opacity-70">
-                                    <Search size={20} className="text-text-faint mb-1" />
+                                <div className="flex flex-col items-center gap-2">
+                                    <Search size={20} className="text-text-faint mb-1 opacity-70" />
                                     <p className="font-medium text-text-main">No prompts match your filter.</p>
-                                    <p className="text-xs text-text-muted max-w-[220px] leading-relaxed">
-                                        Try adjusting your active collection, tags, or search query in the sidebar.
+                                    <p className="text-xs text-text-muted max-w-[220px] leading-relaxed opacity-80">
+                                        Try adjusting your active collection, tags, or search query.
                                     </p>
+                                    
+                                    {/* Contextual Hub Fallback Button */}
+                                    <button
+                                        onClick={() => window.open("https://leanprompts.app", "_blank")}
+                                        className="mt-3 px-3 py-1.5 rounded-lg bg-bg-elevated border border-border hover:border-text-muted/40 text-xs font-medium text-text-muted hover:text-text-main transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                                        title="Search community templates on leanprompts.app"
+                                    >
+                                        <Globe size={13} className="text-indigo-400 shrink-0" />
+                                        <span>Search on leanprompts.app</span>
+                                        <span className="text-[10px] text-text-faint font-mono">↗</span>
+                                    </button>
                                 </div>
                             ) : (
                                 <span className="opacity-50">No prompts created yet.</span>
