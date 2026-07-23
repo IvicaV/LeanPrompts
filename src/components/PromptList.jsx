@@ -630,7 +630,7 @@ export default function PromptList({
                                     
                                     {/* Contextual Hub Fallback Button */}
                                     <button
-                                        onClick={() => window.open("https://leanprompts.app", "_blank")}
+                                        onClick={() => window.open("https://leanprompts.app/explore/", "_blank")}
                                         className="mt-3 px-3 py-1.5 rounded-lg bg-bg-elevated border border-border hover:border-text-muted/40 text-xs font-medium text-text-muted hover:text-text-main transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
                                         title="Search community templates on leanprompts.app"
                                     >

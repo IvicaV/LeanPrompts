@@ -2703,7 +2703,7 @@ const initiateWorkflow = async (promptId) => {
           }
         });
       } else if (item.id === 'action-open-hub') {
-        window.open("https://leanprompts.app", "_blank");
+        window.open("https://leanprompts.app/explore/", "_blank");
       }
     }
   };
@@ -3031,7 +3031,7 @@ const initiateWorkflow = async (promptId) => {
                             </button>
 
                             <button
-                              onClick={() => window.open("https://leanprompts.app", "_blank")}
+                              onClick={() => window.open("https://leanprompts.app/explore/", "_blank")}
                               className="px-3.5 py-1.5 bg-bg-elevated hover:bg-bg-hover border border-border hover:border-text-muted/40 text-xs font-semibold text-text-muted hover:text-text-main rounded-lg transition-colors flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                               title="Browse leanprompts.app"
                             >

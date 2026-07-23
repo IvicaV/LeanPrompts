@@ -171,7 +171,7 @@ export default function LibraryPanel({
                   <button
                     onClick={() => {
                       setShowCreateMenu(false);
-                      window.open("https://leanprompts.app", "_blank");
+                      window.open("https://leanprompts.app/explore/", "_blank");
                     }}
                     className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors text-left"
                   >
