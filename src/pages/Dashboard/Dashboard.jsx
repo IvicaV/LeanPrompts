@@ -2997,10 +2997,8 @@ const initiateWorkflow = async (promptId) => {
                       <div className="flex-1 flex flex-col items-center justify-center p-8 select-none bg-bg text-center">
                         <div className="max-w-xs space-y-4">
                           
-                          {/* Subtle IDE Icon Header */}
-                          <div className="mx-auto w-10 h-10 rounded-xl bg-bg-surface border border-border flex items-center justify-center text-text-muted">
-                            <LayoutGrid size={20} strokeWidth={1.5} />
-                          </div>
+                          {/* IDE Icon Header (Restored Original Size 64) */}
+                          <LayoutGrid size={64} strokeWidth={1} className="mx-auto opacity-40 text-text-muted" />
 
                           {/* Typography */}
                           <div className="space-y-1">
