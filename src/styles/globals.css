@@ -119,13 +119,13 @@
     --selection-bg: #BFDBFE; /* Blue 200 - more visible selection */
     --selection-border: #3B82F6; /* Blue 500 */
 
-    /* VARIABLE CHIPS (Light) */
-    --hl-variable-bg: #ecfdf5;
+    /* VARIABLE CHIPS (Light) - Semitransparent RGBA, um CodeMirror Selection-Highlighting durchscheinen zu lassen */
+    --hl-variable-bg: rgba(16, 185, 129, 0.08);
     --hl-variable-text: #059669;
     --hl-variable-border: #d1fae5;
 
-    /* SNIPPET CHIPS (Light) */
-    --hl-snippet-bg: #fffbeb;
+    /* SNIPPET CHIPS (Light) - Semitransparent RGBA, um CodeMirror Selection-Highlighting durchscheinen zu lassen */
+    --hl-snippet-bg: rgba(245, 158, 11, 0.06);
     --hl-snippet-text: #b45309;
     --hl-snippet-border: #fef3c7;
     --bg-pinned-gradient-start: rgba(217, 119, 6, 0.08);
