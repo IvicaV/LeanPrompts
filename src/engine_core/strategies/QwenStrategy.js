@@ -115,11 +115,7 @@ export class QwenStrategy extends AbstractBaseStrategy {
                         console.log(`LeanPrompts [Qwen] SUCCESS with method: ${method.name}`);
                         return true;
                     } else {
-                        // Die Drop-Methode hat das Event abgesetzt. Qwens UI laggt nur bei der Bestätigung.
-                        // Wir erzwingen hier den Abbruch der Schleife mit 'true', damit 
-                        // Clipboard Paste und Direct Input NICHT mehr ausgeführt werden.
-                        console.log(`LeanPrompts [Qwen] Method ${method.name} dispatched, but validation timed out. Assuming success.`);
-                        return true; 
+                        console.log(`LeanPrompts [Qwen] Method ${method.name} dispatched, but validation timed out. Attempting next method as fallback...`);
                     }
                 }
             } catch (e) {
@@ -217,13 +213,38 @@ export class QwenStrategy extends AbstractBaseStrategy {
                        || textarea;
 
         if (target) {
-            target.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
-            target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
-            target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            const createDragEvent = (type) => {
+                const rect = target.getBoundingClientRect();
+                const ev = new DragEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true,
+                    clientX: rect.left + rect.width / 2,
+                    clientY: rect.top + rect.height / 2,
+                    dataTransfer: dt
+                });
+                
+                // Override read-only dataTransfer property for React compatibility
+                if (ev.dataTransfer !== dt) {
+                    Object.defineProperty(ev, 'dataTransfer', {
+                        value: dt,
+                        writable: false,
+                        configurable: true
+                    });
+                }
+                return ev;
+            };
+
+            target.dispatchEvent(createDragEvent('dragenter'));
+            await this._delay(50); // Stagger event processing
+            target.dispatchEvent(createDragEvent('dragover'));
+            await this._delay(50);
+            target.dispatchEvent(createDragEvent('drop'));
             console.log(`LeanPrompts [Qwen] Dispatched drop on ONE target:`, target.className || target.tagName);
+            return true;
         }
 
-        return true;
+        return false;
     }
 
     /**
@@ -250,8 +271,18 @@ export class QwenStrategy extends AbstractBaseStrategy {
         const pasteEvent = new ClipboardEvent('paste', {
             bubbles: true,
             cancelable: true,
+            composed: true,
             clipboardData: dt
         });
+
+        // Override read-only clipboardData property for React compatibility
+        if (pasteEvent.clipboardData !== dt) {
+            Object.defineProperty(pasteEvent, 'clipboardData', {
+                value: dt,
+                writable: false,
+                configurable: true
+            });
+        }
 
         target.dispatchEvent(pasteEvent);
         console.log('LeanPrompts [Qwen] Dispatched paste event');
@@ -303,7 +334,7 @@ export class QwenStrategy extends AbstractBaseStrategy {
                 }
             }
 
-            // Stufe 2: Generische Upload-Indikatoren (Qwen-spezifisch + Fallbacks)
+            // Stufe 2: Gesonderte Generische Upload-Indikatoren (Qwen-spezifisch + Fallbacks)
             const genericSelectors = [
                 '.ant-upload-list-item-name',   // Ant Design: Dateiname-Span
                 '[class*="file-name"]',          // Generisch: Dateiname-Label
