@@ -1151,9 +1151,115 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+// MAIN WORLD EXECUTOR FOR QWEN FILE DROP (MV3 CSP COMPLIANT)
+function executeQwenDropMainWorld(files) {
+  console.log("[LeanPrompts Qwen Main World] Starting drop execution...");
+
+  const textarea = document.querySelector('textarea#chat-input') ||
+                   document.querySelector('.ant-input-textarea textarea') ||
+                   document.querySelector('textarea');
+
+  const fileInput = document.querySelector('input[type="file"]') ||
+                    Array.from(document.querySelectorAll('input')).find(el => el.type === 'file');
+
+  const target = (fileInput && fileInput.parentElement) ||
+                 document.querySelector('.ant-upload') ||
+                 document.querySelector('[class*="upload"]') ||
+                 (textarea && textarea.closest('[class*="composer"], [class*="input-area"]')) ||
+                 textarea;
+
+  if (!target) {
+    console.error("[LeanPrompts Qwen Main World] No upload target found");
+    return false;
+  }
+
+  const base64ToBlob = (base64, mimeType) => {
+    const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+    const byteCharacters = atob(base64Data);
+    const byteArrays = [];
+    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+      const slice = byteCharacters.slice(offset, offset + 512);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+      byteArrays.push(new Uint8Array(byteNumbers));
+    }
+    return new Blob(byteArrays, { type: mimeType });
+  };
+
+  const dt = new DataTransfer();
+  files.forEach(f => {
+    try {
+      const blob = base64ToBlob(f.data, f.type);
+      const file = new File([blob], f.name, { type: f.type, lastModified: Date.now() });
+      dt.items.add(file);
+    } catch (e) {
+      console.error('[LeanPrompts Qwen Main World] Error building File:', e);
+    }
+  });
+
+  if (dt.files.length === 0) return false;
+
+  const createDragEvent = (type) => {
+    const rect = target.getBoundingClientRect();
+    const ev = new DragEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      dataTransfer: dt
+    });
+
+    if (ev.dataTransfer !== dt) {
+      Object.defineProperty(ev, 'dataTransfer', {
+        value: dt,
+        writable: false,
+        configurable: true
+      });
+    }
+    return ev;
+  };
+
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+  return (async () => {
+    target.dispatchEvent(createDragEvent('dragenter'));
+    await delay(50);
+    target.dispatchEvent(createDragEvent('dragover'));
+    await delay(50);
+    target.dispatchEvent(createDragEvent('drop'));
+    console.log("[LeanPrompts Qwen Main World] Drop event dispatched to target:", target);
+    return true;
+  })();
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Wrap everything in a try-catch to ensure we at least send an error response if something fails synchronously
   try {
+    if (request.action === "EXECUTE_QWEN_MAIN_WORLD") {
+      (async () => {
+        try {
+          const tabId = sender.tab?.id;
+          if (!tabId) {
+            sendResponse({ success: false, error: "No active tab ID" });
+            return;
+          }
+          const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            func: executeQwenDropMainWorld,
+            args: [request.files || []]
+          });
+          sendResponse({ success: true, results });
+        } catch (e) {
+          console.error("LeanPrompts: Qwen Main World execution failed:", e);
+          sendResponse({ success: false, error: e.message });
+        }
+      })();
+      return true;
+    }
     if (request.action === "UPDATE_CONTEXT_STATE") {
       const { hasSelection, isEditable, selectionText } = request;
       const tabId = sender.tab?.id;

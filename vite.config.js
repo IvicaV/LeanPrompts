@@ -88,7 +88,10 @@ const manifest = defineManifest({
         "*://*.bing.com/search*",
         "*://chat.z.ai/*",
         "*://agent.minimax.io/*",
-        "*://*.meta.ai/*"
+        "*://*.meta.ai/*",
+        "*://tongyi.aliyun.com/*",
+        "*://chat.qwenlm.ai/*",
+        "*://chat.qwen.ai/*"
       ],
       js: ["src/content/main.js"],
       run_at: "document_start",
