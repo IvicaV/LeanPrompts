@@ -53,6 +53,7 @@ export default function InspectorPanel({
   llms,
   localEditorContent,
   resolvedEditorContent,
+  fullResolvedContent = "",
   snippets,
   activePrompt,
   toggleVariableIgnore,
@@ -133,7 +134,7 @@ export default function InspectorPanel({
         try {
           const escapedV = v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const regex = new RegExp(`\\{\\{\\s*${escapedV}\\s*:([^}]+)\\}\\}`, 'i');
-          const match = (resolvedEditorContent || "").match(regex);
+          const match = (fullResolvedContent || resolvedEditorContent || "").match(regex);
           if (match && match[1] && match[1].trim() !== "") return false;
         } catch(e) {}
 
@@ -337,7 +338,7 @@ export default function InspectorPanel({
             onClear={onClearSession}
             content={activeStepContent}
             llms={llms}
-            rawContent={resolvedEditorContent || localEditorContent}
+            rawContent={fullResolvedContent || resolvedEditorContent || localEditorContent}
             snippets={snippets}
             ignoredVariables={activePrompt.ignoredVariables}
             onToggleIgnore={(varName) => toggleVariableIgnore(activePrompt.id, varName)}

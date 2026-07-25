@@ -1514,6 +1514,23 @@ const initiateWorkflow = async (promptId) => {
     }
   }, [localEditorContent, snippets]);
 
+  // Aggregates content of all prompt steps (merging live localEditorContent for the active step)
+  const fullPromptContent = useMemo(() => {
+    if (!activePrompt) return "";
+    return (activePrompt.chain || [])
+      .map(s => (s.id === activeStepId ? (localEditorContent || "") : (s.content || "")))
+      .join("\n");
+  }, [activePrompt, activeStepId, localEditorContent]);
+
+  // Resolves all snippets across full prompt content for prompt-wide schema inspection
+  const fullResolvedContent = useMemo(() => {
+    try {
+      return resolveSnippets(fullPromptContent, snippets);
+    } catch (e) {
+      return fullPromptContent;
+    }
+  }, [fullPromptContent, snippets]);
+
   const detectedVariables = useMemo(() => {
     if (!contentWithSnippets) return [];
     try {
@@ -3077,6 +3094,7 @@ const initiateWorkflow = async (promptId) => {
                     llms={llms}
                     localEditorContent={localEditorContent}
                     resolvedEditorContent={contentWithSnippets}
+                    fullResolvedContent={fullResolvedContent}
                     snippets={snippets}
                     activePrompt={activePrompt}
                     toggleVariableIgnore={toggleVariableIgnore}

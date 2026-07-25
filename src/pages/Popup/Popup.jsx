@@ -2006,6 +2006,12 @@ export default function Popup() {
         });
     }, [selectedPrompt, snippets, variableValues]);
 
+    const fullPromptContentResolved = useMemo(() => {
+        if (!selectedPrompt) return "";
+        const fullText = (selectedPrompt.chain || []).map(s => s.content || "").join("\n");
+        return resolveSnippets(fullText, snippets);
+    }, [selectedPrompt, snippets]);
+
     const handleKeyDown = (e) => {
         // QUICK-EDIT KEYBOARD SHORTCUTS
         if (editingId) {
@@ -2549,11 +2555,12 @@ export default function Popup() {
                                                                     // --- DEEP PARSING FOR DROPDOWNS & DEFAULT VALUES ---
                                                                     let rawDefault = "";
                                                                     const stepContentResolved = resolveSnippets(step.content || "", snippets);
-                                                                    if (!isFileVar && stepContentResolved) {
+                                                                    if (!isFileVar) {
                                                                         try {
                                                                             const escapedVarName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                                                                             const regex = new RegExp(`\\{\\{\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
-                                                                            const match = stepContentResolved.match(regex);
+                                                                            const match = (stepContentResolved && stepContentResolved.match(regex)) 
+                                                                                || (fullPromptContentResolved && fullPromptContentResolved.match(regex));
                                                                             if (match && match[1] && match[1].trim()) {
                                                                                 rawDefault = match[1].trim();
                                                                             }
