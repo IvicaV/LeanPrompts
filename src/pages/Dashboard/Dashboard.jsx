@@ -307,7 +307,16 @@ export default function Dashboard() {
   }, []);
 
   const showNotification = (msg, type = 'success') => {
-    setNotification({ msg, type });
+    let messageText = msg;
+    let messageType = type;
+
+    // Fängt Objekte ab und wandelt sie gefahrlos in Strings um
+    if (msg && typeof msg === 'object') {
+      messageText = msg.message || msg.msg || JSON.stringify(msg);
+      messageType = msg.type || type || 'info';
+    }
+
+    setNotification({ msg: String(messageText || ''), type: messageType });
     setTimeout(() => setNotification(null), 4000);
   };
 
@@ -2903,22 +2912,41 @@ const initiateWorkflow = async (promptId) => {
               onSearchChange={setKbSearchQuery}
               pendingKbId={pendingKbId}
               onClearPendingKb={handleClearPendingKb}
-              onNavigateToPrompt={(promptTitle) => {
-                const targetPrompt = prompts.find(p => p.title === promptTitle);
+              onNavigateToPrompt={(targetKey) => {
+                if (!targetKey) return;
+                const cleanKey = String(targetKey).trim();
+
+                // Sucht nach exaktem Titel, Titel mit (imported) oder nach der ID
+                const targetPrompt = prompts.find(p =>
+                  p.title === cleanKey ||
+                  p.title === `${cleanKey} (imported)` ||
+                  p.title.replace(/\s*\(imported\)$/i, '') === cleanKey.replace(/\s*\(imported\)$/i, '') ||
+                  p.id === cleanKey
+                );
+
                 if (targetPrompt) {
                   handlePromptSelect(targetPrompt.id);
                   setCurrentView('library');
                 } else {
-                  showNotification({ type: 'error', message: `Prompt "${promptTitle}" not found` });
+                  showNotification(`Prompt "${cleanKey}" not found`, 'error');
                 }
               }}
-              onNavigateToSnippet={(snippetName) => {
-                const targetSnippet = snippets.find(s => s.name === snippetName);
+              onNavigateToSnippet={(targetKey) => {
+                if (!targetKey) return;
+                const cleanKey = String(targetKey).trim();
+
+                const targetSnippet = snippets.find(s =>
+                  s.name === cleanKey ||
+                  s.name === `${cleanKey} (imported)` ||
+                  s.name.replace(/\s*\(imported\)$/i, '') === cleanKey.replace(/\s*\(imported\)$/i, '') ||
+                  s.id === cleanKey
+                );
+
                 if (targetSnippet) {
                   setPendingSnippetId(targetSnippet.id);
                   setCurrentView('snippets');
                 } else {
-                  showNotification({ type: 'error', message: `Snippet "${snippetName}" not found` });
+                  showNotification(`Snippet "${cleanKey}" not found`, 'error');
                 }
               }}
               kbBacklinks={kbBacklinks}
