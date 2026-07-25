@@ -660,27 +660,33 @@ export default function Dashboard() {
     }
   };
 
-  const saveValuesToCache = (id, values) => {
-    if (!id) return;
-    if (!sessionCache.current[id]) sessionCache.current[id] = { values: {}, files: [] };
-    sessionCache.current[id].values = values;
+  const saveValuesToCache = (promptId, values) => {
+    if (!promptId) return;
+    if (!sessionCache.current[promptId]) sessionCache.current[promptId] = { values: {}, files: [] };
+    sessionCache.current[promptId].values = values;
   };
 
-  const saveFilesToCache = (id, files) => {
-    if (!id) return;
-    if (!sessionCache.current[id]) sessionCache.current[id] = { values: {}, files: [] };
-    sessionCache.current[id].files = files;
+  const saveFilesToCache = (stepId, files) => {
+    if (!stepId) return;
+    if (!sessionCache.current[stepId]) sessionCache.current[stepId] = { values: {}, files: [] };
+    sessionCache.current[stepId].files = files;
   };
 
-  const loadFromCache = (id) => {
-    if (id && sessionCache.current[id]) {
-      setVariableValues(sessionCache.current[id].values || {});
-      setCurrentStepFiles(sessionCache.current[id].files || []);
-      setActivePresetName(sessionCache.current[id]?.activePresetName || null);
+  const loadFromCache = (promptId, stepId = null) => {
+    const targetStep = stepId || activeStepId;
+
+    if (promptId && sessionCache.current[promptId]) {
+      setVariableValues(sessionCache.current[promptId].values || {});
+      setActivePresetName(sessionCache.current[promptId]?.activePresetName || null);
     } else {
       setVariableValues({});
-      setCurrentStepFiles([]);
       setActivePresetName(null);
+    }
+
+    if (targetStep && sessionCache.current[targetStep]) {
+      setCurrentStepFiles(sessionCache.current[targetStep].files || []);
+    } else {
+      setCurrentStepFiles([]);
     }
   };
 
@@ -1386,10 +1392,9 @@ const initiateWorkflow = async (promptId) => {
   const handlePromptSelect = (id) => {
     flushPendingSave(); // FLUSH BEFORE CONTEXT SWITCH
 
-    const currentId = activeStepId || activePromptId;
-    if (currentId) {
-      saveValuesToCache(currentId, variableValues);
-      saveFilesToCache(currentId, currentStepFiles);
+    if (activePromptId) {
+      saveValuesToCache(activePromptId, variableValues);
+      if (activeStepId) saveFilesToCache(activeStepId, currentStepFiles);
     }
 
     const targetPrompt = prompts.find(p => p.id === id);
@@ -1399,7 +1404,7 @@ const initiateWorkflow = async (promptId) => {
 
     setActivePrompt(id);
     setActiveStepId(targetStepId);
-    loadFromCache(targetStepId || id);
+    loadFromCache(id, targetStepId);
     setIsPreviewMode(false);
     // Robust Layout Reset: Ensure sidebars and centered state are visible when switching prompts
     setIsZenMode(false);
@@ -1409,17 +1414,20 @@ const initiateWorkflow = async (promptId) => {
 
   const handleStepFocus = (stepId) => {
     if (stepId === activeStepId) return;
-    
+
     flushPendingSave(); // FLUSH BEFORE CONTEXT SWITCH
 
-    const oldId = activeStepId || activePromptId;
-    if (oldId) {
-      saveValuesToCache(oldId, variableValues);
-      saveFilesToCache(oldId, currentStepFiles);
-    }
+    if (activePromptId) saveValuesToCache(activePromptId, variableValues);
+    if (activeStepId) saveFilesToCache(activeStepId, currentStepFiles);
 
     setActiveStepId(stepId);
-    loadFromCache(stepId);
+
+    // Load step attachments without wiping variableValues
+    if (stepId && sessionCache.current[stepId]) {
+      setCurrentStepFiles(sessionCache.current[stepId].files || []);
+    } else {
+      setCurrentStepFiles([]);
+    }
 
     // FIX: Read latest from store to prevent stale closure overwrites
     const latestPrompt = usePromptStore.getState().prompts.find(p => p.id === activePromptId);
@@ -1844,7 +1852,7 @@ const initiateWorkflow = async (promptId) => {
     }
 
     setVariableValues(newVars);
-    saveValuesToCache(activeStepId || activePromptId, newVars);
+    saveValuesToCache(activePromptId, newVars);
 
     // Wenn es sich um eine Dateivariable handelt, sichere sie isoliert
     if (key.startsWith('file:') || key.startsWith('!file:')) {
@@ -1894,7 +1902,7 @@ const initiateWorkflow = async (promptId) => {
     setVariableValues({});
     setCurrentStepFiles([]);
     setActivePresetName(null);
-    saveValuesToCache(activeStepId || activePromptId, {});
+    saveValuesToCache(activePromptId, {});
     saveFilesToCache(activeStepId || activePromptId, []);
     const activeKey = activeStepId || activePromptId;
     if (activeKey && sessionCache.current[activeKey]) {
@@ -2060,7 +2068,7 @@ const initiateWorkflow = async (promptId) => {
     }
     
     // 3. Sync to cache
-    saveValuesToCache(activeStepId || activePromptId, newValues);
+    saveValuesToCache(activePromptId, newValues);
     if (newFiles.length > 0) {
       saveFilesToCache(activeStepId || activePromptId, newFiles);
     }
@@ -3093,7 +3101,7 @@ const initiateWorkflow = async (promptId) => {
                     activeStepContent={activeStepContent}
                     llms={llms}
                     localEditorContent={localEditorContent}
-                    resolvedEditorContent={contentWithSnippets}
+                    resolvedEditorContent={fullResolvedContent}
                     fullResolvedContent={fullResolvedContent}
                     snippets={snippets}
                     activePrompt={activePrompt}
