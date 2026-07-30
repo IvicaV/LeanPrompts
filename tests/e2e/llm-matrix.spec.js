@@ -6,18 +6,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const extensionPath = path.join(__dirname, '../../dist');
 
-// Master LLM Matrix definition
+// Master LLM Matrix definition matching src/utils/llmConstants.js
 const LLMS_TO_TEST = [
-  { name: 'ChatGPT', url: 'https://chatgpt.com', selector: '#prompt-textarea' },
-  { name: 'Claude', url: 'https://claude.ai', selector: 'div.ProseMirror[contenteditable="true"]' },
-  { name: 'Gemini', url: 'https://gemini.google.com/app', selector: 'rich-textarea' },
-  { name: 'Google AI Studio', url: 'https://aistudio.google.com/prompts/new_chat', selector: 'textarea' },
-  { name: 'DeepSeek', url: 'https://chat.deepseek.com', selector: '#chat-input, textarea' },
-  { name: 'Qwen', url: 'https://chat.qwenlm.ai', selector: 'textarea' },
-  { name: 'Kimi', url: 'https://kimi.moonshot.cn', selector: 'div[contenteditable="true"], textarea' },
-  { name: 'Perplexity', url: 'https://www.perplexity.ai', selector: 'textarea' },
-  { name: 'Grok', url: 'https://grok.com', selector: 'textarea, div.ProseMirror' },
-  { name: 'Mistral', url: 'https://chat.mistral.ai', selector: 'textarea' }
+  { id: 'gpt4', name: 'ChatGPT', url: 'https://chatgpt.com' },
+  { id: 'claude', name: 'Claude', url: 'https://claude.ai' },
+  { id: 'gemini', name: 'Gemini', url: 'https://gemini.google.com' },
+  { id: 'aistudio', name: 'AI Studio', url: 'https://aistudio.google.com' },
+  { id: 'deepseek', name: 'Deepseek', url: 'https://chat.deepseek.com' },
+  { id: 'qwen', name: 'Qwen', url: 'https://chat.qwenlm.ai' },
+  { id: 'kimi', name: 'Kimi', url: 'https://www.kimi.com' },
+  { id: 'perplexity', name: 'Perplexity', url: 'https://www.perplexity.ai' },
+  { id: 'grok', name: 'Grok', url: 'https://grok.com' },
+  { id: 'mistral', name: 'Mistral', url: 'https://chat.mistral.ai' }
 ];
 
 test.describe('LeanPrompts Studio - Complete LLM Injection Matrix', () => {
@@ -25,6 +25,9 @@ test.describe('LeanPrompts Studio - Complete LLM Injection Matrix', () => {
   let extensionId;
 
   test.beforeAll(async () => {
+    // Set default timeout to 45s for external SPA loading
+    test.setTimeout(45000);
+
     // Launch Chromium with persistent context and extension loaded
     const userDataDir = path.join(__dirname, '../../scratch/test-user-data');
     context = await chromium.launchPersistentContext(userDataDir, {
@@ -73,8 +76,14 @@ test.describe('LeanPrompts Studio - Complete LLM Injection Matrix', () => {
   for (const llm of LLMS_TO_TEST) {
     test.describe(`LLM: ${llm.name}`, () => {
 
+      // Helper to locate LLM button in Popup
+      const getLlmButton = (popupPage) => {
+        return popupPage.locator(`[title*="${llm.name}" i], button:has-text("${llm.name}")`).first();
+      };
+
       // Test 1: Standard Click (Text Only) - Cold Start
       test(`[1] Standard Click (Text Only) - ${llm.name}`, async () => {
+        test.setTimeout(45000);
         const popupPage = await context.newPage();
         // Use ?mode=sidebar to prevent Popup.jsx from triggering window.close()
         await popupPage.goto(`chrome-extension://${extensionId}/popup.html?mode=sidebar`);
@@ -86,20 +95,21 @@ test.describe('LeanPrompts Studio - Complete LLM Injection Matrix', () => {
         await expect(input).toBeVisible({ timeout: 5000 });
         await input.fill(testPrompt);
 
-        // Find LLM button
-        const llmButton = popupPage.locator(`button:has-text("${llm.name}"), [title*="${llm.name}"]`).first();
+        const llmButton = getLlmButton(popupPage);
+        await expect(llmButton).toBeVisible({ timeout: 5000 });
         
         const startTime = Date.now();
-        await llmButton.click();
+        await llmButton.click({ force: true, noWaitAfter: true });
 
         // Target LLM tab should open or focus
-        const targetPage = await context.waitForEvent('page', { timeout: 12000 }).catch(() => context.pages().find(p => p.url().includes(new URL(llm.url).hostname)));
+        const targetHost = new URL(llm.url).hostname.replace('www.', '');
+        const targetPage = await context.waitForEvent('page', { timeout: 15000 }).catch(() => context.pages().find(p => p.url().includes(targetHost)));
         expect(targetPage).toBeDefined();
 
         // Check if toast or prompt input target is reachable
         if (targetPage) {
           const toast = targetPage.locator('#lp-status-toast');
-          await expect(toast).toBeVisible({ timeout: 8000 }).catch(() => {
+          await expect(toast).toBeVisible({ timeout: 10000 }).catch(() => {
             console.log(`[E2E Notice] Toast verification pending on ${llm.name}`);
           });
 
@@ -115,6 +125,7 @@ test.describe('LeanPrompts Studio - Complete LLM Injection Matrix', () => {
 
       // Test 2: Ctrl + Click (New Chat / Force Navigate) - Warm Start
       test(`[2] Ctrl + Click (Force New Chat) - ${llm.name}`, async () => {
+        test.setTimeout(45000);
         const popupPage = await context.newPage();
         await popupPage.goto(`chrome-extension://${extensionId}/popup.html?mode=sidebar`);
 
@@ -123,13 +134,15 @@ test.describe('LeanPrompts Studio - Complete LLM Injection Matrix', () => {
         await expect(input).toBeVisible({ timeout: 5000 });
         await input.fill(testPrompt);
 
-        const llmButton = popupPage.locator(`button:has-text("${llm.name}"), [title*="${llm.name}"]`).first();
+        const llmButton = getLlmButton(popupPage);
+        await expect(llmButton).toBeVisible({ timeout: 5000 });
         
-        // Simulate Ctrl + Click with force: true
-        await llmButton.click({ modifiers: ['Control'], force: true });
+        // Simulate Ctrl + Click with force: true and noWaitAfter: true
+        await llmButton.click({ modifiers: ['Control'], force: true, noWaitAfter: true });
 
         // Verify target page opens
-        const targetPage = await context.waitForEvent('page', { timeout: 12000 }).catch(() => context.pages().find(p => p.url().includes(new URL(llm.url).hostname)));
+        const targetHost = new URL(llm.url).hostname.replace('www.', '');
+        const targetPage = await context.waitForEvent('page', { timeout: 15000 }).catch(() => context.pages().find(p => p.url().includes(targetHost)));
         expect(targetPage).toBeDefined();
 
         await popupPage.close().catch(() => {});
@@ -137,13 +150,15 @@ test.describe('LeanPrompts Studio - Complete LLM Injection Matrix', () => {
 
       // Test 3: Shift + Click (Open-Only Mode)
       test(`[3] Shift + Click (Open Only, Text = null) - ${llm.name}`, async () => {
+        test.setTimeout(45000);
         const popupPage = await context.newPage();
         await popupPage.goto(`chrome-extension://${extensionId}/popup.html?mode=sidebar`);
 
-        const llmButton = popupPage.locator(`button:has-text("${llm.name}"), [title*="${llm.name}"]`).first();
+        const llmButton = getLlmButton(popupPage);
+        await expect(llmButton).toBeVisible({ timeout: 5000 });
         
-        // Simulate Shift + Click with force: true
-        await llmButton.click({ modifiers: ['Shift'], force: true });
+        // Simulate Shift + Click with force: true and noWaitAfter: true
+        await llmButton.click({ modifiers: ['Shift'], force: true, noWaitAfter: true });
 
         await popupPage.close().catch(() => {});
       });
