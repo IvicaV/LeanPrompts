@@ -31,18 +31,46 @@ export class GeminiStrategy extends AbstractBaseStrategy {
     }
 
     getInput() {
-        // 1. Deep Shadow Root traversal for the modern Gemini rich-textarea
-        const host = document.querySelector('rich-textarea');
-        if (host && host.shadowRoot) {
-            const inner = host.shadowRoot.querySelector('div[contenteditable="true"]') ||
-                host.shadowRoot.querySelector('.ql-editor') ||
-                host.shadowRoot.querySelector('p[contenteditable="true"]');
-            if (inner) return inner;
+        // 1. High-Performance Query across ALL rich-textarea elements in Light DOM
+        const hosts = Array.from(document.querySelectorAll('rich-textarea'));
+        for (const host of hosts) {
+            if (host && host.shadowRoot) {
+                const inner = host.shadowRoot.querySelector('div[contenteditable="true"]') ||
+                    host.shadowRoot.querySelector('[contenteditable="true"]') ||
+                    host.shadowRoot.querySelector('[contenteditable="plaintext-only"]') ||
+                    host.shadowRoot.querySelector('[role="textbox"]') ||
+                    host.shadowRoot.querySelector('.ql-editor') ||
+                    host.shadowRoot.querySelector('p[contenteditable="true"]') ||
+                    host.shadowRoot.querySelector('textarea');
+                
+                if (inner && (inner.offsetWidth > 0 || inner.offsetHeight > 0)) {
+                    return inner;
+                }
+            }
         }
 
-        // 2. High-Performance Selectors
+        // 2. Fallback to Deep Search if host is wrapped inside another shadow root
+        const deepHosts = findAllElementsDeep(document, el => el.tagName === 'RICH-TEXTAREA');
+        for (const host of deepHosts) {
+            if (host && host.shadowRoot) {
+                const inner = host.shadowRoot.querySelector('div[contenteditable="true"]') ||
+                    host.shadowRoot.querySelector('[contenteditable="true"]') ||
+                    host.shadowRoot.querySelector('[contenteditable="plaintext-only"]') ||
+                    host.shadowRoot.querySelector('[role="textbox"]') ||
+                    host.shadowRoot.querySelector('.ql-editor') ||
+                    host.shadowRoot.querySelector('p[contenteditable="true"]') ||
+                    host.shadowRoot.querySelector('textarea');
+                
+                if (inner && (inner.offsetWidth > 0 || inner.offsetHeight > 0)) {
+                    return inner;
+                }
+            }
+        }
+
+        // 3. High-Performance Selectors Fallback
         const selectors = [
             'rich-textarea div[contenteditable="true"]',
+            'rich-textarea [contenteditable="true"]',
             'div.ql-editor',
             'div[contenteditable="true"][role="textbox"]',
             'rich-textarea p'
@@ -50,10 +78,10 @@ export class GeminiStrategy extends AbstractBaseStrategy {
 
         for (const selector of selectors) {
             const el = document.querySelector(selector);
-            if (el) return el;
+            if (el && (el.offsetWidth > 0 || el.offsetHeight > 0)) return el;
         }
 
-        // 3. Fallback to heuristics
+        // 4. Fallback to global heuristics
         return findBestTextInput();
     }
 

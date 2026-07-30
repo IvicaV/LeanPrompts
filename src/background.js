@@ -672,24 +672,22 @@ const performInjection = async (tabId, payload) => {
       for (let i = 0; i < MAX_ATTEMPTS; i++) {
         const results = await sendToAllFrames(tabId, payload);
 
-        // FIRST SUCCESS WINS: If any frame succeeded, we are done!
+        // 1. FIRST SUCCESS WINS: If any frame succeeded, we are done!
         const success = results.find(r => r && r.success);
         if (success) return success;
+
+        // 2. PRIORITIZE MAIN FRAME (Frame 0)
+        const mainFrameResult = results.find(r => r && r.frameId === 0);
+        if (mainFrameResult && mainFrameResult.success) return mainFrameResult;
 
         // AGGREGATE ERRORS & STATUS
         const isAnyBusy = results.some(r => r && r.reason === "BUSY");
         const isAnyClosed = results.some(r => r && (r.error === "CHANNEL_CLOSED" || r.error === "NO_RESPONSE"));
 
-        // Determine if we have a "Terminal" error. 
-        // We only return an error if ALL frames have failed and NONE are busy.
-        // If any frame is BUSY, we MUST continue polling.
-        const realErrors = results.filter(r => r && r.error && r.error !== "CHANNEL_CLOSED" && r.error !== "NO_RESPONSE" && !r.reason);
-
-        // ZERO-REGRESSION FIX: Ignore 'isAnyClosed' here.
-        // Dormant iframes (e.g. Google Login) always return CHANNEL_CLOSED.
-        // If the main frame returns a real error (like "Action required"), we must not mask it!
-        if (realErrors.length > 0 && !isAnyBusy) {
-          return realErrors[0];
+        // 3. ONLY TRUST NON-SILENT ERRORS FROM MAIN FRAME (FRAME 0)
+        const mainFrameError = results.find(r => r && r.frameId === 0 && r.error && !r.silent && r.error !== "CHANNEL_CLOSED" && r.error !== "NO_RESPONSE" && !r.reason);
+        if (mainFrameError) {
+          return mainFrameError;
         }
 
         // RETRY LOGIC for BUSY or CHANNEL_CLOSED
@@ -1609,10 +1607,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   await new Promise(r => setTimeout(r, 800));
 
                   // Aktiven Handshake mit dem Content-Script versuchen
-                  const isReady = await waitForContentScript(tab.id, 3000);
+                  const isReady = await waitForContentScript(tab.id, 12000);
                   if (!isReady) {
-                    // Falls das Script nicht antwortet (z.B. wegen Redirect im Gange),
-                    // brechen wir diesen Versuch ab, lassen den Listener aber aktiv für das nächste Event.
+                    isResolved = true;
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    clearTimeout(fallbackTimer);
+                    sendResponse({ success: false, error: "Content script did not respond during page load." });
                     return;
                   }
 
@@ -1638,8 +1638,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               };
 
               const listener = (tabId, changeInfo) => {
-                // Reagiert auf 'complete' (auch nach Weiterleitungen)
-                if (tabId === tab.id && changeInfo.status === 'complete') {
+                // Reagiert auf 'complete' ODER URL-Änderungen bei SPAs
+                if (tabId === tab.id && (changeInfo.status === 'complete' || changeInfo.url)) {
                   proceedWithInjection();
                 }
               };

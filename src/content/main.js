@@ -688,12 +688,10 @@ try {
 
     // INJECT_PROMPT HANDLER (Async with State Protection)
     if (request.action === "INJECT_PROMPT_v105") {
-      // 1. Frame Guard: Prevent injection in hidden/utility iframes (avoids multi-injection)
+      // 1. Frame Guard: Sub-iframes break silently to prevent error poisoning on top frame
       if (window.self !== window.top) {
-        const style = window.getComputedStyle(window.frameElement || document.documentElement);
-        if (style.display === 'none' || style.visibility === 'hidden' || window.innerWidth < 50 || window.innerHeight < 50) {
-          return false;
-        }
+        sendResponse({ success: false, silent: true, error: "SUB_FRAME_IGNORED" });
+        return false;
       }
 
       // 2. ATOMIC INJECTION LOCK (Phase 3: Strictly Synchronous)
@@ -718,6 +716,9 @@ try {
         sendResponse({ success: true, status: "SKIPPED_DUPLICATE" });
         return false;
       }
+
+      // INSTANT VISUAL FEEDBACK: Immediate toast on top frame (0ms delay)
+      showStatus("Injecting...", false, 0, true);
 
       (async () => {
         try {
@@ -805,9 +806,6 @@ try {
             sendResponse({ success: true, status: "SKIPPED_REDUNDANT" });
             return;
           }
-
-          // BUGFIX: Show global English spinner toast AFTER redundancy check
-          showStatus("Injecting...", false, 0, true);
 
           // === GRACEFUL DEGRADATION: File failure must NOT block text injection ===
           let filesFailed = false;
