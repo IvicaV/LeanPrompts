@@ -553,24 +553,25 @@ const Tile = React.memo(function Tile({
                   text = stripComments(tile.content || '');
                 }
 
+                // 1. Erstes Bild unversehrt für das Kachel-Header-Banner sichern
                 const images = [];
-                const lines = text.split('\n');
-                const nonTableLines = [];
+                const imgRegex = /!\[([^\]]*)\]\(((?:https?:\/\/|data:image\/)[^)]+)\)/g;
+                let match;
+                if ((match = imgRegex.exec(text)) !== null) {
+                    images.push({ alt: match[1], src: match[2] });
+                }
 
-                lines.forEach(line => {
-                  if (line.includes('|')) {
-                    nonTableLines.push(line); 
-                  } else {
-                    const cleanedLine = line.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|data:image\/)[^)]+)\)/g, (match, alt, src) => {
-                      images.push({ alt, src });
-                      return '';
-                    });
-                    nonTableLines.push(cleanedLine);
-                  }
+                // 2. Alle Base64-Bilddaten im Fließtext/Tabelle durch schlanke Labels ersetzen.
+                // Dadurch wird der Text nicht von 50.000-Zeichen Base64-Strings aufgebläht und abgeschnitten.
+                text = text.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (m, alt) => {
+                    const cleanAlt = alt.split('=')[0].split('|')[0].trim() || 'Image';
+                    return `[Image: ${cleanAlt}]`;
                 });
 
-                text = nonTableLines.join('\n').slice(0, 300);
+                // 3. Jetzt gefahrlos auf 300 Zeichen kürzen (Tabellen-Syntax bleibt intakt)
+                text = text.slice(0, 300);
 
+                // 4. Das erste Bild als saubere Vorschau oben voranstellen
                 if (images.length > 0) {
                     text = `![${images[0].alt}](${images[0].src})\n\n` + text;
                 }
