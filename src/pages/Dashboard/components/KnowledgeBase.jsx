@@ -555,29 +555,7 @@ const Tile = React.memo(function Tile({
                 // 1. Tabellen-Syntax reparieren (Zeilenumbrüche innerhalb von Tabellenzellen zusammenführen)
                 text = normalizeMarkdownTables(text);
 
-                // 2. Erstes Bild unversehrt für das Kachel-Header-Banner sichern
-                const images = [];
-                const imgRegex = /!\[([^\]]*)\]\(\s*((?:https?:\/\/|http:\/\/|data:image\/)[^)]+)\s*\)/g;
-                let match;
-                if ((match = imgRegex.exec(text)) !== null) {
-                    images.push({ alt: match[1], src: match[2] });
-                }
-
-                // 3. Alle Base64-Bilddaten im Fließtext/Tabelle durch schlanke Labels ersetzen.
-                // Dadurch wird der Text nicht von 50.000-Zeichen Base64-Strings aufgebläht und abgeschnitten.
-                text = text.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (m, alt) => {
-                    const cleanAlt = alt.split('=')[0].split('|')[0].trim() || 'Image';
-                    return `[Image: ${cleanAlt}]`;
-                });
-
-                // 4. Jetzt gefahrlos auf 300 Zeichen kürzen (Tabellen-Syntax bleibt intakt)
-                text = text.slice(0, 300);
-
-                // 5. Das erste Bild als saubere Vorschau oben voranstellen
-                if (images.length > 0) {
-                    text = `![${images[0].alt}](${images[0].src})\n\n` + text;
-                }
-
+                // 2. Erhalte intakte Markdown-Bilder in Tabellen & Vorschauen
                 return text;
               })()), snippets)}
             </ReactMarkdown>

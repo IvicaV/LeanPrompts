@@ -557,6 +557,8 @@ export const normalizeMarkdownTables = (text) => {
   normalized = normalized.replace(/\|[ \t]*[\r\n]+[ \t]*(!\[[^\]]*\]\([^)]+\))/g, '| $1');
   // Pattern 3: [content]\n| => [content] |
   normalized = normalized.replace(/(!\[[^\]]*\]\([^)]+\))[ \t]*[\r\n]+[ \t]*\|/g, '$1 |');
+  // Pattern 4: General multi-line cell join
+  normalized = normalized.replace(/(\|[^\r\n|]*)[ \t]*[\r\n]+[ \t]*(?![|\r\n])([^|\r\n]+)[ \t]*[\r\n]+[ \t]*\|/g, '$1 $2 |');
 
   return normalized;
 };
