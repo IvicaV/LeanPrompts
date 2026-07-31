@@ -146,6 +146,7 @@ export default defineConfig({
     sourcemap: false, // Keine Sourcemaps im Store-Build (erhöht Sicherheit und Datenschutz)
     minify: 'esbuild', // Standard-Minifizierung von Vite (CWS-konform, keine riskante Obfuszierung)
     chunkSizeWarningLimit: 2000,
+    modulePreload: false,
     rollupOptions: {
       input: {
         dashboard: 'index.html',
