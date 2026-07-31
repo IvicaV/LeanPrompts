@@ -1257,14 +1257,19 @@ export default function KnowledgeTileEditor({
                                                 )
                                             },
                                             img: ({ node, alt, src, ...props }) => {
-                                                // 🛡️ SECURITY GUARD: Image Whitelisting
                                                 const safeSrc = (src || '').trim();
                                                 let isSafeImg = false;
-                                                try {
-                                                    const urlObj = new URL(safeSrc);
-                                                    isSafeImg = ['http:', 'https:'].includes(urlObj.protocol) || safeSrc.startsWith('data:image/');
-                                                } catch (e) {
-                                                    isSafeImg = false;
+
+                                                // FIX: Base64 zuerst prüfen (verhindert TypeError in new URL bei Umbrüchen/Leerzeichen)
+                                                if (safeSrc.startsWith('data:image/')) {
+                                                    isSafeImg = true;
+                                                } else {
+                                                    try {
+                                                        const urlObj = new URL(safeSrc);
+                                                        isSafeImg = ['http:', 'https:'].includes(urlObj.protocol);
+                                                    } catch (e) {
+                                                        isSafeImg = false;
+                                                    }
                                                 }
 
                                                 if (!isSafeImg) return null; // Drop malicious payloads silently
@@ -1287,8 +1292,8 @@ export default function KnowledgeTileEditor({
                                                         {...props}
                                                         src={safeSrc}
                                                         alt={cleanAlt}
-                                                        style={width ? { width: width, maxWidth: '100%' } : {}}
-                                                        className="rounded-lg shadow-sm border border-border my-4"
+                                                        style={width ? { width: width, maxWidth: '100%' } : { maxHeight: '300px', maxWidth: '100%', objectFit: 'contain' }}
+                                                        className="rounded-lg shadow-sm border border-border my-2 block"
                                                     />
                                                 );
                                             }

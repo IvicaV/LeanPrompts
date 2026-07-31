@@ -502,22 +502,25 @@ const Tile = React.memo(function Tile({
                   )
                 },
                 img: ({ node, alt, src, ...props }) => {
-                  // 🛡️ SECURITY GUARD: Image Whitelisting
                   const safeSrc = (src || '').trim();
                   let isSafeImg = false;
-                  try {
-                      const urlObj = new URL(safeSrc);
-                      isSafeImg = ['http:', 'https:'].includes(urlObj.protocol) || safeSrc.startsWith('data:image/');
-                  } catch (e) {
-                      isSafeImg = false;
+                  
+                  if (safeSrc.startsWith('data:image/')) {
+                      isSafeImg = true;
+                  } else {
+                      try {
+                          const urlObj = new URL(safeSrc);
+                          isSafeImg = ['http:', 'https:'].includes(urlObj.protocol);
+                      } catch (e) {
+                          isSafeImg = false;
+                      }
                   }
 
-                  if (!isSafeImg) return null; // Drop malicious payloads silently
+                  if (!isSafeImg) return null; 
 
                   let width = undefined;
                   let cleanAlt = alt;
 
-                  // CHECK '=' FIRST (table-safe), THEN '|' (legacy)
                   const SEP = (alt && alt.includes('=')) ? '=' : (alt && alt.includes('|')) ? '|' : null;
                   if (SEP) {
                       const parts = alt.split(SEP);
@@ -527,7 +530,6 @@ const Tile = React.memo(function Tile({
                       }
                   }
 
-                  // ZERO-REGRESSION: Render the real image, height-capped so the card grid stays compact
                   return (
                       <img
                           {...props}
@@ -535,8 +537,8 @@ const Tile = React.memo(function Tile({
                           alt={cleanAlt}
                           style={width
                               ? { width: width, maxWidth: '100%', maxHeight: '96px', objectFit: 'cover' }
-                              : { maxWidth: '100%', maxHeight: '96px', objectFit: 'cover' }}
-                          className="rounded-lg shadow-sm border border-border/50 my-1.5 block w-full"
+                              : { maxWidth: '100%', maxHeight: '96px', objectFit: 'contain' }}
+                          className="rounded-lg shadow-sm border border-border/50 my-1 block"
                       />
                   );
                 },
@@ -551,19 +553,25 @@ const Tile = React.memo(function Tile({
                   text = stripComments(tile.content || '');
                 }
 
-                // ZERO-REGRESSION: Extract images BEFORE slicing so Base64 or Web URLs are never cut mid-syntax.
-                // We park the full image string, trim the surrounding text to 300 chars,
-                // then prepend the first image back so the card can render it intact.
                 const images = [];
-                text = text.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|data:image\/)[^)]+)\)/g, (match, alt, src) => {
-                    images.push({ alt, src });
-                    return ''; // Remove from text so it doesn't eat the 300-char budget
+                const lines = text.split('\n');
+                const nonTableLines = [];
+
+                lines.forEach(line => {
+                  if (line.includes('|')) {
+                    nonTableLines.push(line); 
+                  } else {
+                    const cleanedLine = line.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|data:image\/)[^)]+)\)/g, (match, alt, src) => {
+                      images.push({ alt, src });
+                      return '';
+                    });
+                    nonTableLines.push(cleanedLine);
+                  }
                 });
 
-                text = text.slice(0, 300);
+                text = nonTableLines.join('\n').slice(0, 300);
 
                 if (images.length > 0) {
-                    // Prepend the first image back — full URL/Base64 intact, parser-safe
                     text = `![${images[0].alt}](${images[0].src})\n\n` + text;
                 }
 
