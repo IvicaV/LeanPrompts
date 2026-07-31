@@ -132,8 +132,8 @@ export const safeUrlTransform = (uri) => {
     return cleanUri;
   }
   
-  // 2. Erlaube sichere Standard-Web-Protokolle
-  if (/^(https?|mailto):/i.test(cleanUri)) {
+  // 2. Erlaube sichere Standard-Web-Protokolle sowie Base64-Bilder (data:image/)
+  if (/^(https?|mailto|data:image\/)/i.test(cleanUri)) {
     return cleanUri;
   }
   
