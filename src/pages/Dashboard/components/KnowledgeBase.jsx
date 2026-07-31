@@ -534,9 +534,9 @@ const Tile = React.memo(function Tile({
                           src={safeSrc}
                           alt={cleanAlt}
                           style={width
-                              ? { width: width, maxWidth: '100%', maxHeight: '120px', objectFit: 'cover' }
-                              : { maxWidth: '100%', maxHeight: '120px', objectFit: 'cover' }}
-                          className="rounded-lg shadow-sm border border-border my-2 block"
+                              ? { width: width, maxWidth: '100%', maxHeight: '96px', objectFit: 'cover' }
+                              : { maxWidth: '100%', maxHeight: '96px', objectFit: 'cover' }}
+                          className="rounded-lg shadow-sm border border-border/50 my-1.5 block w-full"
                       />
                   );
                 },
@@ -551,11 +551,11 @@ const Tile = React.memo(function Tile({
                   text = stripComments(tile.content || '');
                 }
 
-                // ZERO-REGRESSION: Extract images BEFORE slicing so Base64 is never cut mid-syntax.
-                // We park the full Base64 string, trim the surrounding text to 300 chars,
+                // ZERO-REGRESSION: Extract images BEFORE slicing so Base64 or Web URLs are never cut mid-syntax.
+                // We park the full image string, trim the surrounding text to 300 chars,
                 // then prepend the first image back so the card can render it intact.
                 const images = [];
-                text = text.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (match, alt, src) => {
+                text = text.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|data:image\/)[^)]+)\)/g, (match, alt, src) => {
                     images.push({ alt, src });
                     return ''; // Remove from text so it doesn't eat the 300-char budget
                 });
@@ -563,7 +563,7 @@ const Tile = React.memo(function Tile({
                 text = text.slice(0, 300);
 
                 if (images.length > 0) {
-                    // Prepend the first image back — full Base64 intact, parser-safe
+                    // Prepend the first image back — full URL/Base64 intact, parser-safe
                     text = `![${images[0].alt}](${images[0].src})\n\n` + text;
                 }
 

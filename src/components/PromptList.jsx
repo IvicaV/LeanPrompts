@@ -422,12 +422,12 @@ const PromptCard = memo(({
                                     try {
                                         const compiled = compilePrompt(resolveSnippets(prompt.content, snippets), {});
                                         let trim = compiled.trim();
-                                        // --- CONFORMITY FILTER: Collapse Base64 images to tidy label ---
-                                        trim = trim.replace(/!\[(.*?)\]\(data:image\/[^)]*\)/g, '[Image: $1]');
+                                        // --- CONFORMITY FILTER: Collapse images to tidy label ---
+                                        trim = trim.replace(/!\[(.*?)\]\((?:https?:\/\/|data:image\/)[^)]*\)/g, '[Image: $1]');
                                         return trim ? (trim.length > 300 ? trim.slice(0, 300) + "..." : trim) : "Empty...";
                                     } catch (e) {
                                         let fallback = prompt.content || "";
-                                        fallback = fallback.replace(/!\[(.*?)\]\(data:image\/[^)]*\)/g, '[Image: $1]');
+                                        fallback = fallback.replace(/!\[(.*?)\]\((?:https?:\/\/|data:image\/)[^)]*\)/g, '[Image: $1]');
                                         return fallback.length > 300 ? fallback.slice(0, 300) + "..." : fallback;
                                     }
                                 })() : "Empty..."}

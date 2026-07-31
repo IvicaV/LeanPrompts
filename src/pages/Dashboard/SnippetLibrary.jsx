@@ -1337,8 +1337,8 @@ export default function SnippetLibrary({
                                                     <div className="text-xs text-text-muted truncate font-mono opacity-60 group-hover:opacity-90 transition-opacity mt-1">
                                                         {s.content ? (() => {
                                                             let previewTxt = getPreviewForSnippet(s.content).trim();
-                                                            // Collapse Base64 images to a tidy label before truncating
-                                                            previewTxt = previewTxt.replace(/!\[(.*?)\]\(data:image\/[^)]*\)/g, '[Image: $1]');
+                                                            // Collapse images to a tidy label before truncating
+                                                            previewTxt = previewTxt.replace(/!\[(.*?)\]\((?:https?:\/\/|data:image\/)[^)]*\)/g, '[Image: $1]');
                                                             return previewTxt ? (previewTxt.length > 300 ? previewTxt.slice(0, 300) + "..." : previewTxt) : "Empty...";
                                                         })() : "Empty..."}
                                                     </div>
