@@ -42,7 +42,7 @@ import MultiTaggerModal from '../../../components/MultiTaggerModal';
 import CodeBlock from './CodeBlock';
 import DynamicTagList from '../../../components/DynamicTagList';
 import { formatLeanText, replaceLeanLinksOutsideCode, safeUrlTransform } from '../../../utils/leanFormat';
-import { stripComments } from '../../../utils/variableParser';
+import { stripComments, normalizeMarkdownTables } from '../../../utils/variableParser';
 import { styleTags, tags } from '@lezer/highlight';
 import { leanBaseTheme, leanSyntaxHighlighting } from '../../../utils/editorTheme';
 import useBodyLock from '../../../hooks/useBodyLock';
@@ -1299,7 +1299,7 @@ export default function KnowledgeTileEditor({
                                             }
                                         }}
                                     >
-                                        {replaceLeanLinksOutsideCode(stripComments(content) || "*Start writing your note...*", snippets)}
+                                        {replaceLeanLinksOutsideCode(normalizeMarkdownTables(stripComments(content)) || "*Start writing your note...*", snippets)}
                                     </ReactMarkdown>
                                 </MarkdownErrorBoundary>
                             </div>

@@ -39,7 +39,7 @@ import SearchInput from '../../../components/SearchInput';
 import usePromptStore from '../../../stores/promptStore';
 import ActiveFilterBar from '../../../components/ActiveFilterBar';
 import { formatLeanText, replaceLeanLinksOutsideCode, safeUrlTransform } from '../../../utils/leanFormat';
-import { stripComments, compilePrompt, resolveSnippets } from '../../../utils/variableParser';
+import { stripComments, compilePrompt, resolveSnippets, normalizeMarkdownTables } from '../../../utils/variableParser';
 import { getCollectionTintStyle, getCollectionListRowStyle } from '../../../utils/collectionColors';
 
 class MarkdownErrorBoundary extends React.Component {
@@ -552,25 +552,28 @@ const Tile = React.memo(function Tile({
                   text = stripComments(tile.content || '');
                 }
 
-                // 1. Erstes Bild unversehrt für das Kachel-Header-Banner sichern
+                // 1. Tabellen-Syntax reparieren (Zeilenumbrüche innerhalb von Tabellenzellen zusammenführen)
+                text = normalizeMarkdownTables(text);
+
+                // 2. Erstes Bild unversehrt für das Kachel-Header-Banner sichern
                 const images = [];
-                const imgRegex = /!\[([^\]]*)\]\(((?:https?:\/\/|data:image\/)[^)]+)\)/g;
+                const imgRegex = /!\[([^\]]*)\]\(\s*((?:https?:\/\/|http:\/\/|data:image\/)[^)]+)\s*\)/g;
                 let match;
                 if ((match = imgRegex.exec(text)) !== null) {
                     images.push({ alt: match[1], src: match[2] });
                 }
 
-                // 2. Alle Base64-Bilddaten im Fließtext/Tabelle durch schlanke Labels ersetzen.
+                // 3. Alle Base64-Bilddaten im Fließtext/Tabelle durch schlanke Labels ersetzen.
                 // Dadurch wird der Text nicht von 50.000-Zeichen Base64-Strings aufgebläht und abgeschnitten.
                 text = text.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (m, alt) => {
                     const cleanAlt = alt.split('=')[0].split('|')[0].trim() || 'Image';
                     return `[Image: ${cleanAlt}]`;
                 });
 
-                // 3. Jetzt gefahrlos auf 300 Zeichen kürzen (Tabellen-Syntax bleibt intakt)
+                // 4. Jetzt gefahrlos auf 300 Zeichen kürzen (Tabellen-Syntax bleibt intakt)
                 text = text.slice(0, 300);
 
-                // 4. Das erste Bild als saubere Vorschau oben voranstellen
+                // 5. Das erste Bild als saubere Vorschau oben voranstellen
                 if (images.length > 0) {
                     text = `![${images[0].alt}](${images[0].src})\n\n` + text;
                 }

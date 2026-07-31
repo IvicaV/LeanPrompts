@@ -541,3 +541,22 @@ export const compilePrompt = (text, values, ignoredVariables = []) => {
     return match;
   });
 };
+
+/**
+ * Normalizes Markdown tables where table rows were broken across multiple lines
+ * (e.g. '| \n ![image](...) \n | cell2 |').
+ * Collapses newlines between table pipe delimiters so GFM can parse valid tables.
+ */
+export const normalizeMarkdownTables = (text) => {
+  if (!text) return text;
+  
+  let normalized = text;
+  // Pattern 1: |\n[content]\n| => | [content] |
+  normalized = normalized.replace(/\|[ \t]*[\r\n]+[ \t]*(!\[[^\]]*\]\([^)]+\)|[^|\r\n]+)[ \t]*[\r\n]+[ \t]*\|/g, '| $1 |');
+  // Pattern 2: |\n[content] => | [content]
+  normalized = normalized.replace(/\|[ \t]*[\r\n]+[ \t]*(!\[[^\]]*\]\([^)]+\))/g, '| $1');
+  // Pattern 3: [content]\n| => [content] |
+  normalized = normalized.replace(/(!\[[^\]]*\]\([^)]+\))[ \t]*[\r\n]+[ \t]*\|/g, '$1 |');
+
+  return normalized;
+};
