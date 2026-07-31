@@ -424,10 +424,9 @@ const Tile = React.memo(function Tile({
 
       {/* SEPARATOR */}
       <div className="border-b border-border/50 mb-4 mx-1"></div>
-
       {/* CONTENT PREVIEW */}
       <div className="relative overflow-hidden flex-1 min-h-0 text-left px-1">
-        <div className="text-xs text-text-muted/80 line-clamp-3">
+        <div className="text-xs text-text-muted/80 overflow-hidden max-h-48">
           <MarkdownErrorBoundary>
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkBreaks]}
@@ -455,7 +454,7 @@ const Tile = React.memo(function Tile({
                 ul: ({ node, ...props }) => <ul className="list-disc ml-3 space-y-0.5 my-1" {...props} />,
                 li: ({ node, ...props }) => <li className="my-0" {...props} />,
                 p: ({ children }) => (
-                  <p className="mb-1 leading-normal text-text-muted/90">
+                  <p className="mb-1 leading-normal text-text-muted/90 line-clamp-2">
                     {React.Children.map(children, child =>
                       typeof child === 'string' ? formatLeanText(child, onNavigateToPrompt) : child
                     )}

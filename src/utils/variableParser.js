@@ -40,7 +40,7 @@ export const getIgnoredRanges = (text) => {
   // ZERO-REGRESSION: Pre-calculate image ranges to fast-forward past them.
   // Prevents random '/*' inside Base64 or '//' inside http/https URLs from corrupting the parser.
   const imageRanges = [];
-  const imgRegex = /!\[([^\]]*)\]\(((?:https?:\/\/|data:image\/)[^)]+)\)/g;
+  const imgRegex = /!\[([^\]]*)\]\(\s*((?:https?:\/\/|http:\/\/|data:image\/)[^)]+)\s*\)|data:image\/[^\s"')]+/g;
   let m;
   while ((m = imgRegex.exec(text)) !== null) {
       imageRanges.push({ from: m.index, to: m.index + m[0].length });
@@ -208,7 +208,7 @@ export const stripComments = (text) => {
 
   // Vorberechnung der Bild-Bereiche zur Absicherung von Base64 & Web-Bildelementen
   const imageRanges = [];
-  const imgRegex = /!\[([^\]]*)\]\(((?:https?:\/\/|data:image\/)[^)]+)\)/g;
+  const imgRegex = /!\[([^\]]*)\]\(\s*((?:https?:\/\/|http:\/\/|data:image\/)[^)]+)\s*\)|data:image\/[^\s"')]+/g;
   let m;
   while ((m = imgRegex.exec(text)) !== null) {
       imageRanges.push({ from: m.index, to: m.index + m[0].length });
