@@ -7,7 +7,7 @@
  * @license      AGPL-3.0
  * ============================================================================
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { X, Filter } from 'lucide-react';
 
 export default function ActiveFilterBar({
@@ -20,8 +20,13 @@ export default function ActiveFilterBar({
     onClearAll,
     layout = "list" // "list" | "contained"
 }) {
+    const uniqueSelectedTags = useMemo(() => {
+        if (!Array.isArray(selectedTags)) return [];
+        return Array.from(new Set(selectedTags));
+    }, [selectedTags]);
+
     const hasCollection = !!activeCollection;
-    const hasTags = Array.isArray(selectedTags) && selectedTags.length > 0;
+    const hasTags = uniqueSelectedTags.length > 0;
     const hasSearch = typeof searchQuery === 'string' && searchQuery.trim() !== "";
 
     if (!hasCollection && !hasTags && !hasSearch) return null;
@@ -61,7 +66,7 @@ export default function ActiveFilterBar({
                         </span>
                     )}
 
-                    {hasTags && selectedTags.map(tag => (
+                    {hasTags && uniqueSelectedTags.map(tag => (
                         <span 
                             key={tag}
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-bg-elevated border border-border text-text-muted hover:text-text-main"
@@ -113,7 +118,7 @@ export default function ActiveFilterBar({
             )}
 
             {/* Tags */}
-            {hasTags && selectedTags.map(tag => (
+            {hasTags && uniqueSelectedTags.map(tag => (
                 <span 
                     key={tag}
                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-bg-elevated border border-border text-text-muted hover:text-text-main"

@@ -2195,7 +2195,7 @@ const initiateWorkflow = async (promptId) => {
         `The tag "${targetName}" already exists. Would you like to merge "${oldTag}" into "${targetName}"?\n\n${affectedCount} item(s) will be updated to "${targetName}".`,
         async () => {
           await renameTag(oldTag, targetName);
-          setSelectedTags(prev => prev.map(t => t === oldTag ? targetName : t));
+          setSelectedTags(prev => [...new Set(prev.map(t => t === oldTag ? targetName : t))]);
           showNotification(`Tag "${oldTag}" merged into "${targetName}".`, "success");
         },
         false, // not dangerous
@@ -2203,7 +2203,7 @@ const initiateWorkflow = async (promptId) => {
       );
     } else {
       await renameTag(oldTag, trimmed);
-      setSelectedTags(prev => prev.map(t => t === oldTag ? trimmed : t));
+      setSelectedTags(prev => [...new Set(prev.map(t => t === oldTag ? trimmed : t))]);
       showNotification(`Tag renamed to "${trimmed}".`, "success");
     }
   };
