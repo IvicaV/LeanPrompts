@@ -1340,13 +1340,16 @@ const usePromptStore = create((set, get) => ({
   },
 
   renameTag: async (oldTag, newTag) => {
+    const trimmedNew = newTag.trim();
+    if (!trimmedNew || oldTag === trimmedNew) return;
+
     // 1. Prompts
     const prompts = get().prompts;
     const promptsToUpdate = prompts.filter(p => p.tags && p.tags.includes(oldTag));
     const newPrompts = prompts.map(p => {
       if (p.tags && p.tags.includes(oldTag)) {
         const otherTags = p.tags.filter(t => t !== oldTag);
-        return { ...p, tags: [...new Set([...otherTags, newTag])] };
+        return { ...p, tags: [...new Set([...otherTags, trimmedNew])] };
       }
       return p;
     });
@@ -1357,25 +1360,42 @@ const usePromptStore = create((set, get) => ({
     const newSnippets = snippets.map(s => {
       if (s.tags && s.tags.includes(oldTag)) {
         const otherTags = s.tags.filter(t => t !== oldTag);
-        return { ...s, tags: [...new Set([...otherTags, newTag])] };
+        return { ...s, tags: [...new Set([...otherTags, trimmedNew])] };
       }
       return s;
     });
 
-    // Optimistic Update
-    set({ prompts: newPrompts, snippets: newSnippets });
+    // 3. Knowledge Tiles
+    const tiles = get().knowledgeTiles || [];
+    const tilesToUpdate = tiles.filter(t => t.tags && t.tags.includes(oldTag));
+    const newTiles = tiles.map(t => {
+      if (t.tags && t.tags.includes(oldTag)) {
+        const otherTags = t.tags.filter(tag => tag !== oldTag);
+        return { ...t, tags: [...new Set([...otherTags, trimmedNew])] };
+      }
+      return t;
+    });
+
+    // Optimistic Update (single atomic state change for all 3 domains)
+    set({ prompts: newPrompts, snippets: newSnippets, knowledgeTiles: newTiles });
 
     // Persist using atomic bulk transactions
     await Promise.all([
       dbAPI.bulkPutPrompts(promptsToUpdate.map(p => {
         const otherTags = (p.tags || []).filter(t => t !== oldTag);
-        return { ...p, tags: [...new Set([...otherTags, newTag])] };
+        return { ...p, tags: [...new Set([...otherTags, trimmedNew])] };
       })),
       dbAPI.bulkPutSnippets(snippetsToUpdate.map(s => {
         const otherTags = (s.tags || []).filter(t => t !== oldTag);
-        return { ...s, tags: [...new Set([...otherTags, newTag])] };
+        return { ...s, tags: [...new Set([...otherTags, trimmedNew])] };
+      })),
+      dbAPI.bulkPutKnowledge(tilesToUpdate.map(t => {
+        const otherTags = (t.tags || []).filter(tag => tag !== oldTag);
+        return { ...t, tags: [...new Set([...otherTags, trimmedNew])] };
       }))
     ]);
+
+    if (get()._syncChannel) get()._syncChannel.postMessage('RELOAD_DATA');
   },
 
   // --- KNOWLEDGE BASE ---

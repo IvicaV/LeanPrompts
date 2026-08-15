@@ -2180,8 +2180,32 @@ const initiateWorkflow = async (promptId) => {
   };
 
   const handleRenameTag = async (oldTag, newTag) => {
-    if (!newTag.trim() || oldTag === newTag) return;
-    await renameTag(oldTag, newTag.trim());
+    const trimmed = newTag.trim();
+    if (!trimmed || oldTag === trimmed) return;
+
+    const tagExists = allTags.some(t => t.name.toLowerCase() === trimmed.toLowerCase() && t.name !== oldTag);
+
+    if (tagExists) {
+      const targetTagObj = allTags.find(t => t.name.toLowerCase() === trimmed.toLowerCase());
+      const targetName = targetTagObj ? targetTagObj.name : trimmed;
+      const affectedCount = allTags.find(t => t.name === oldTag)?.count || 0;
+
+      confirmAction(
+        "Merge Tags?",
+        `The tag "${targetName}" already exists. Would you like to merge "${oldTag}" into "${targetName}"?\n\n${affectedCount} item(s) will be updated to "${targetName}".`,
+        async () => {
+          await renameTag(oldTag, targetName);
+          setSelectedTags(prev => prev.map(t => t === oldTag ? targetName : t));
+          showNotification(`Tag "${oldTag}" merged into "${targetName}".`, "success");
+        },
+        false, // not dangerous
+        "Merge Tags"
+      );
+    } else {
+      await renameTag(oldTag, trimmed);
+      setSelectedTags(prev => prev.map(t => t === oldTag ? trimmed : t));
+      showNotification(`Tag renamed to "${trimmed}".`, "success");
+    }
   };
 
   const handleDeleteTag = (tagName, count) => {
