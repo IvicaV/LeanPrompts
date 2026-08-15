@@ -974,10 +974,11 @@ const usePromptStore = create((set, get) => ({
   },
 
   inlineSnippetInPrompts: async (snippetName, snippetContent) => {
-    const prompts = get().prompts;
     const escapedName = escapeRegExp(snippetName);
     const regex = new RegExp(`@\\{${escapedName}\\}|@${escapedName}(?!\\w)`, 'gi');
 
+    // 1. Prompts
+    const prompts = get().prompts;
     const updatedPrompts = prompts.map(p => {
       let hasChanges = false;
       let newContent = p.content;
@@ -987,57 +988,82 @@ const usePromptStore = create((set, get) => ({
         hasChanges = true;
       }
 
-      const newChain = p.chain.map(step => {
-        if (regex.test(step.content)) {
+      const newChain = (p.chain || []).map(step => {
+        if (regex.test(step.content || "")) {
           hasChanges = true;
           return { ...step, content: step.content.replace(regex, snippetContent) };
         }
         return step;
       });
 
-      if (hasChanges) {
-        return { ...p, content: newContent, chain: newChain, updatedAt: new Date().toISOString() };
-      }
-      return p;
+      return hasChanges ? { ...p, content: newContent, chain: newChain, updatedAt: new Date().toISOString() } : p;
     });
+    const promptChanges = updatedPrompts.filter((p, i) => p !== prompts[i]);
 
-    const changes = updatedPrompts.filter((p, i) => p !== prompts[i]);
-    await dbAPI.bulkPutPrompts(changes);
-    set({ prompts: updatedPrompts });
+    // 2. Knowledge Tiles
+    const tiles = get().knowledgeTiles || [];
+    const updatedTiles = tiles.map(t => {
+      if (regex.test(t.content || "")) {
+        return { ...t, content: t.content.replace(regex, snippetContent), updatedAt: new Date().toISOString() };
+      }
+      return t;
+    });
+    const tileChanges = updatedTiles.filter((t, i) => t !== tiles[i]);
+
+    // 3. Other Snippets
+    const snippets = get().snippets || [];
+    const updatedSnippets = snippets.map(s => {
+      if (s.name !== snippetName && regex.test(s.content || "")) {
+        return { ...s, content: s.content.replace(regex, snippetContent), updatedAt: new Date().toISOString() };
+      }
+      return s;
+    });
+    const snippetChanges = updatedSnippets.filter((s, i) => s !== snippets[i]);
+
+    await Promise.all([
+      dbAPI.bulkPutPrompts(promptChanges),
+      dbAPI.bulkPutKnowledge(tileChanges),
+      dbAPI.bulkPutSnippets(snippetChanges)
+    ]);
+
+    set({ prompts: updatedPrompts, knowledgeTiles: updatedTiles, snippets: updatedSnippets });
+    if (get()._syncChannel) get()._syncChannel.postMessage('RELOAD_DATA');
   },
 
   renameSnippetEverywhere: async (oldName, newName) => {
-    // 1. Update Prompts
+    // 1. Prompts
     await get().renameSnippetInPrompts(oldName, newName);
 
-    // 2. Update Knowledge Tiles
-    const tiles = get().knowledgeTiles;
-    if (tiles && tiles.length > 0) {
-      const escapedName = escapeRegExp(oldName);
-      const regex = new RegExp(`@\\{${escapedName}\\}|@${escapedName}(?!\\w)`, 'gi');
-      const replacement = `@{${newName}}`;
+    const escapedName = escapeRegExp(oldName);
+    const regex = new RegExp(`@\\{${escapedName}\\}|@${escapedName}(?!\\w)`, 'gi');
+    const replacement = `@{${newName}}`;
 
-      const updatedTiles = [];
-      for (const tile of tiles) {
-        if (regex.test(tile.content || "")) {
-          const updatedTile = {
-            ...tile,
-            content: tile.content.replace(regex, replacement),
-            updatedAt: new Date().toISOString()
-          };
-          updatedTiles.push(updatedTile);
-          await dbAPI.saveKnowledge(updatedTile);
-        }
+    // 2. Knowledge Tiles (Atomic Bulk Update)
+    const tiles = get().knowledgeTiles || [];
+    const updatedTiles = tiles.map(t => {
+      if (regex.test(t.content || "")) {
+        return { ...t, content: t.content.replace(regex, replacement), updatedAt: new Date().toISOString() };
       }
+      return t;
+    });
+    const tileChanges = updatedTiles.filter((t, i) => t !== tiles[i]);
 
-      if (updatedTiles.length > 0) {
-        const currentTiles = get().knowledgeTiles;
-        const tileMap = new Map(updatedTiles.map(t => [t.id, t]));
-        set({ knowledgeTiles: currentTiles.map(t => tileMap.has(t.id) ? tileMap.get(t.id) : t) });
+    // 3. Other Snippets (Atomic Bulk Update)
+    const snippets = get().snippets || [];
+    const updatedSnippets = snippets.map(s => {
+      if (s.name !== oldName && regex.test(s.content || "")) {
+        return { ...s, content: s.content.replace(regex, replacement), updatedAt: new Date().toISOString() };
       }
-    }
+      return s;
+    });
+    const snippetChanges = updatedSnippets.filter((s, i) => s !== snippets[i]);
 
-    // Full sync to ensure all UIs are consistent
+    await Promise.all([
+      dbAPI.bulkPutKnowledge(tileChanges),
+      dbAPI.bulkPutSnippets(snippetChanges)
+    ]);
+
+    set({ knowledgeTiles: updatedTiles, snippets: updatedSnippets });
     if (get()._syncChannel) get()._syncChannel.postMessage('RELOAD_DATA');
   },
 
@@ -1077,10 +1103,11 @@ const usePromptStore = create((set, get) => ({
   },
 
   removeSnippetRefsFromPrompts: async (snippetName) => {
-    const prompts = get().prompts;
     const escapedName = escapeRegExp(snippetName);
     const regex = new RegExp(`@\\{${escapedName}\\}|@${escapedName}(?!\\w)`, 'gi');
 
+    // 1. Prompts
+    const prompts = get().prompts;
     const updatedPrompts = prompts.map(p => {
       let hasChanges = false;
 
@@ -1090,7 +1117,7 @@ const usePromptStore = create((set, get) => ({
         hasChanges = true;
       }
 
-      const newChain = p.chain.map(step => {
+      const newChain = (p.chain || []).map(step => {
         if (regex.test(step.content || "")) {
           hasChanges = true;
           return { ...step, content: step.content.replace(regex, "") };
@@ -1103,10 +1130,36 @@ const usePromptStore = create((set, get) => ({
       }
       return p;
     });
+    const promptChanges = updatedPrompts.filter((p, i) => p !== prompts[i]);
 
-    const changes = updatedPrompts.filter((p, i) => p !== prompts[i]);
-    await dbAPI.bulkPutPrompts(changes);
-    set({ prompts: updatedPrompts });
+    // 2. Knowledge Tiles
+    const tiles = get().knowledgeTiles || [];
+    const updatedTiles = tiles.map(t => {
+      if (regex.test(t.content || "")) {
+        return { ...t, content: t.content.replace(regex, ""), updatedAt: new Date().toISOString() };
+      }
+      return t;
+    });
+    const tileChanges = updatedTiles.filter((t, i) => t !== tiles[i]);
+
+    // 3. Other Snippets
+    const snippets = get().snippets || [];
+    const updatedSnippets = snippets.map(s => {
+      if (s.name !== snippetName && regex.test(s.content || "")) {
+        return { ...s, content: s.content.replace(regex, ""), updatedAt: new Date().toISOString() };
+      }
+      return s;
+    });
+    const snippetChanges = updatedSnippets.filter((s, i) => s !== snippets[i]);
+
+    await Promise.all([
+      dbAPI.bulkPutPrompts(promptChanges),
+      dbAPI.bulkPutKnowledge(tileChanges),
+      dbAPI.bulkPutSnippets(snippetChanges)
+    ]);
+
+    set({ prompts: updatedPrompts, knowledgeTiles: updatedTiles, snippets: updatedSnippets });
+    if (get()._syncChannel) get()._syncChannel.postMessage('RELOAD_DATA');
   },
 
   // --- SETTINGS & LLMS ---
