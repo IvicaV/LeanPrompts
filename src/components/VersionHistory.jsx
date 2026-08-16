@@ -125,7 +125,18 @@ export default function VersionHistory({
 
                 {/* VIEW CONTROLS */}
                 <button
-                    onClick={() => setShowEvolution(!showEvolution)}
+                    onClick={() => {
+                        const nextEvolution = !showEvolution;
+                        setShowEvolution(nextEvolution);
+                        // When closing diff view: smooth scroll to active snapshot or top of timeline
+                        if (!nextEvolution) {
+                            if (activeVersionId) {
+                                setScrollTargetId(activeVersionId);
+                            } else if (scrollRef.current) {
+                                scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                            }
+                        }
+                    }}
                     className={`w-full p-1.5 rounded-md text-[10px] font-medium border transition-all flex items-center justify-center gap-1.5 ${showEvolution
                         ? 'bg-primary/10 border-primary text-primary'
                         : 'bg-bg-elevated border-transparent text-text-muted hover:text-text-main group/diff'
