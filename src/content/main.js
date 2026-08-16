@@ -759,14 +759,14 @@ try {
               connectingToastShown = true;
             }
 
-            // 🛡️ FAST ABORT ON LOGIN / AUTH MASKS (No pointless 25s delay)
+            // 🛡️ FAST ABORT ON LOGIN / AUTH MASKS (< 100ms)
             if (document.readyState === 'complete') {
               const isLoginMask = document.querySelector('input[type="password"]') || 
                                   document.querySelector('form[action*="login" i], form[action*="signin" i], form[action*="auth" i]') ||
                                   document.querySelector('div[class*="login-modal" i], div[id*="login-modal" i], div[class*="auth-modal" i], div[id*="auth-modal" i]') ||
                                   document.querySelector('input[name="password" i], input[autocomplete*="password" i]');
               if (isLoginMask) {
-                throw new Error("LOGIN_REQUIRED");
+                return { error: "LOGIN_REQUIRED" };
               }
             }
 
@@ -782,10 +782,15 @@ try {
             return null;
           }, 25000); // 25s max safety timeout (stays under Chrome's 30s Service Worker watchdog)
 
+          // 🛡️ EVALUATE LOGIN SENTINEL SIGNAL
+          if (inputField && inputField.error === "LOGIN_REQUIRED") {
+            throw new Error("LOGIN_REQUIRED");
+          }
+
           // MANUAL TIMEOUT LOGIC: Re-evaluate if we should actually give up
           // We only give up if:
           // (Page is complete AND grace period passed) OR (Total timeout 120s reached)
-          if (!inputField) {
+          if (!inputField || !(inputField instanceof HTMLElement)) {
             const totalElapsed = Date.now() - isProcessing.startTime;
             const isComplete = document.readyState === 'complete';
             const graceElapsed = pageCompleteTime ? (Date.now() - pageCompleteTime) : 0;

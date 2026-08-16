@@ -74,6 +74,11 @@ export const waitForElement = (checker, timeout = 5000) => {
                     resolve(el);
                     return true;
                 }
+                // 🛡️ SENTINEL-GUARD: Terminate polling immediately if login/auth or specific error is signaled
+                if (el && el.error === 'LOGIN_REQUIRED') {
+                    resolve(el);
+                    return true;
+                }
             } catch (e) { }
 
             if (Date.now() - startTime > timeout) {
