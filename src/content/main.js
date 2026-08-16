@@ -721,8 +721,9 @@ try {
       showStatus("Injecting...", false, 0, true);
 
       (async () => {
+        let adapter = null;
         try {
-          const adapter = getCurrentAdapter(window.location.hostname);
+          adapter = getCurrentAdapter(window.location.hostname);
 
           // A) FIND (Load-Aware Hydration Loop)
           // We wait as long as the page is loading, then add a 10s grace period for hydration.
@@ -751,11 +752,22 @@ try {
               if (el) return el;
             }
 
-            // 3. Progressive Feedback
+            // 3. Progressive Feedback (Spinner stays active during connection)
             const timeElapsed = Date.now() - isProcessing.startTime;
             if (!connectingToastShown && adapter && timeElapsed > 2500) {
-              showStatus(`Connecting to ${adapter.name}...`, false, 2000);
+              showStatus(`Connecting to ${adapter.name}...`, false, 0, true);
               connectingToastShown = true;
+            }
+
+            // 🛡️ FAST ABORT ON LOGIN / AUTH MASKS (No pointless 25s delay)
+            if (document.readyState === 'complete') {
+              const isLoginMask = document.querySelector('input[type="password"]') || 
+                                  document.querySelector('form[action*="login" i], form[action*="signin" i], form[action*="auth" i]') ||
+                                  document.querySelector('div[class*="login-modal" i], div[id*="login-modal" i], div[class*="auth-modal" i], div[id*="auth-modal" i]') ||
+                                  document.querySelector('input[name="password" i], input[autocomplete*="password" i]');
+              if (isLoginMask) {
+                throw new Error("LOGIN_REQUIRED");
+              }
             }
 
             // PHASE 2: Wait patiently without false positive toasts.
@@ -880,9 +892,13 @@ try {
         } catch (error) {
           // BUGFIX: Cleanup hanging spinner on error
           const el = document.getElementById('lp-status-toast');
-          if (el && el.innerText.includes("Injecting")) el.remove();
+          if (el && (el.innerText.includes("Injecting") || el.innerText.includes("Connecting"))) el.remove();
 
-          if (error.message !== "SILENT_FRAME_MISSING") {
+          if (error.message === "LOGIN_REQUIRED") {
+            const uiMessage = `Please log in to ${adapter?.name || 'the AI'} to inject your prompt.`;
+            showStatus(uiMessage, 'warning', 8000, false, false);
+            sendResponse({ success: false, reason: "LOGIN_REQUIRED", error: uiMessage, fallbackText: request.text });
+          } else if (error.message !== "SILENT_FRAME_MISSING") {
             console.error("LeanPrompts Injection Error:", error);
             
             // --- START: ZERO-REGRESSION AUTO-COPY UI ---
