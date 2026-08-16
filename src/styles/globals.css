@@ -560,18 +560,16 @@ body {
   /* @PROTECTED_REGION END: Dark Mode Modal Architecture */
 
   .dark .dm-dropdown {
-    background-color: rgba(30, 30, 36, 0.96) !important; /* Spürbar angehobene Zinc-Fläche für perfekten Kontrast */
-    border-color: rgba(255, 255, 255, 0.16) !important; /* Definiertes Kantenlicht (Rim-Light) */
+    background-color: #27272a !important; /* Solides Zinc-800: 100 % blickdicht und deutlich abgehoben */
+    border: 1px solid rgba(255, 255, 255, 0.22) !important; /* Deutliches Kantenlicht */
     box-shadow: 
-      0 16px 40px -8px rgba(0, 0, 0, 0.85), 
-      0 0 0 1px rgba(255, 255, 255, 0.08), 
-      inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
-    /* OVERRIDE VARS JUST FOR THIS CONTEXT */
-    --bg-surface: #1e1e24; 
-    --bg-elevated: #2a2a33;
-    --bg-hover: rgba(255, 255, 255, 0.08);
+      0 20px 50px -10px rgba(0, 0, 0, 0.95), 
+      0 0 0 1px rgba(255, 255, 255, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15) !important; /* Räumliche Tiefe */
+    /* OVERRIDE VARS FOR THIS CONTEXT */
+    --bg-surface: #27272a; 
+    --bg-elevated: #3f3f46;
+    --bg-hover: rgba(255, 255, 255, 0.10);
   }
 
   .modal-backdrop {
