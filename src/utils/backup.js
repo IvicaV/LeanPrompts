@@ -585,9 +585,12 @@ export const backupManager = {
       }
       // --- END COLLECTION INTEGRITY GUARD ---
 
-      // 1. Dictionaries for find-and-replace in the Prompt
-      const snippetRenames = []; // { oldName, newName }
-      const kbRenames = [];      // { oldTitle, newTitle }
+      // 1. Dictionaries for find-and-replace in the Prompt, Snippets & KB (Names AND IDs)
+      const snippetRenames = [];      // { oldName, newName }
+      const kbRenames = [];           // { oldTitle, newTitle }
+      const snippetIdMap = new Map(); // oldId -> newId
+      const kbIdMap = new Map();      // oldId -> newId
+      const promptIdMap = new Map();  // oldId -> newId
 
       // Generate a unique session ID for the rollback feature
       const importSessionId = `imp_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
@@ -601,42 +604,47 @@ export const backupManager = {
         item.importedAt = importedAt;
       };
 
-      // 2. Process Snippets
+      const snippetsToSave = [];
+      const kbToSave = [];
+
+      // 2. Process Snippets (Pass 1: ID & Name resolution)
       const sStore = tx.objectStore('snippets');
       const sNameIndex = sStore.index('name');
 
-      for (let s of finalData.snippets) {
-        let conflictItem = conflicts.snippets.find(c => c.incoming.id === s.id);
+      for (let s of (finalData.snippets || [])) {
+        const originalSnippetId = s.id;
+        let conflictItem = conflicts?.snippets?.find(c => c.incoming.id === s.id);
+
+        if (conflictItem && finalData.updateIntent) {
+          // INTELLIGENT UPDATE LOGIC FOR SNIPPETS
+          const existingId = conflictItem.existing.id;
+          const existingSnippet = await sStore.get(existingId);
+
+          if (existingSnippet) {
+            snippetIdMap.set(originalSnippetId, existingId);
+            
+            // 1. Snapshot the old snippet
+            const snapshotVersion = {
+              id: crypto.randomUUID(),
+              timestamp: new Date().toISOString(),
+              content: existingSnippet.content,
+              note: `Auto-Snapshot before Bundle Update`,
+              importSessionId: importSessionId
+            };
+            existingSnippet.versions = existingSnippet.versions || [];
+            existingSnippet.versions.unshift(snapshotVersion);
+
+            // 2. Overwrite necessary fields 
+            existingSnippet.content = s.content;
+            existingSnippet.updatedAt = new Date().toISOString();
+            if (s.notes) existingSnippet.notes = s.notes;
+
+            snippetsToSave.push(existingSnippet);
+            continue;
+          }
+        }
 
         if (conflictItem) {
-          // INTELLIGENT UPDATE LOGIC FOR SNIPPETS
-          if (finalData.updateIntent) {
-            const existingId = conflictItem.existing.id;
-            const existingSnippet = await sStore.get(existingId);
-
-            if (existingSnippet) {
-              // 1. Snapshot the old snippet
-              const snapshotVersion = {
-                id: crypto.randomUUID(),
-                timestamp: new Date().toISOString(),
-                content: existingSnippet.content,
-                note: `Auto-Snapshot before Bundle Update`,
-                importSessionId: importSessionId
-              };
-              existingSnippet.versions = existingSnippet.versions || [];
-              existingSnippet.versions.unshift(snapshotVersion);
-
-              // 2. Overwrite necessary fields 
-              existingSnippet.content = s.content;
-              existingSnippet.updatedAt = new Date().toISOString();
-              if (s.notes) existingSnippet.notes = s.notes;
-
-              await sStore.put(existingSnippet);
-              // Fast-forward (no renaming needed for updates)
-              continue;
-            }
-          }
-
           // STANDARD DUPLICATE LOGIC
           const oldName = s.name;
           let baseName = `${s.name} (imported)`;
@@ -650,12 +658,11 @@ export const backupManager = {
 
           s.name = newName;
           s.id = crypto.randomUUID(); // Give it a fresh ID so it doesn't overwrite
+          snippetIdMap.set(originalSnippetId, s.id);
           snippetRenames.push({ oldName, newName: s.name });
         } else {
-          // If it isn't a conflict, we still might want to give it a new ID 
-          // to prevent future "Smart Merge" from treating them as the exact same snippet 
-          // if the user edits it locally, but for now we keep the ID so it merges cleanly 
-          // if imported again.
+          // Keep existing ID if no conflict
+          snippetIdMap.set(originalSnippetId, s.id);
         }
 
         if (!s.updatedAt) {
@@ -663,45 +670,53 @@ export const backupManager = {
         }
 
         attachImportMeta(s);
-        await sStore.put(s);
+        snippetsToSave.push(s);
       }
 
-      // 3. Process Knowledge Base
+      // 3. Process Knowledge Base (Pass 1: ID & Title resolution)
       const kStore = tx.objectStore('knowledge');
-      for (let k of finalData.knowledgeBase) {
-        let conflictItem = conflicts.knowledge.find(c => c.incoming.id === k.id);
+      for (let k of (finalData.knowledgeBase || [])) {
+        const originalKbId = k.id;
+        let conflictItem = conflicts?.knowledge?.find(c => c.incoming.id === k.id);
+
+        if (conflictItem && finalData.updateIntent) {
+          // INTELLIGENT UPDATE LOGIC FOR KB
+          const existingId = conflictItem.existing.id;
+          const existingKB = await kStore.get(existingId);
+
+          if (existingKB) {
+            kbIdMap.set(originalKbId, existingId);
+
+            const snapshotVersion = {
+              id: crypto.randomUUID(),
+              timestamp: new Date().toISOString(),
+              content: existingKB.content,
+              note: `Auto-Snapshot before Bundle Update`,
+              importSessionId: importSessionId
+            };
+            existingKB.versions = existingKB.versions || [];
+            existingKB.versions.unshift(snapshotVersion);
+
+            existingKB.content = k.content;
+            existingKB.updatedAt = new Date().toISOString();
+            if (k.tags) existingKB.tags = k.tags;
+            if (k.notes) existingKB.notes = k.notes;
+
+            kbToSave.push(existingKB);
+            continue;
+          }
+        }
 
         if (conflictItem) {
-          // INTELLIGENT UPDATE LOGIC FOR KB
-          if (finalData.updateIntent) {
-            const existingId = conflictItem.existing.id;
-            const existingKB = await kStore.get(existingId);
-
-            if (existingKB) {
-              const snapshotVersion = {
-                id: crypto.randomUUID(),
-                timestamp: new Date().toISOString(),
-                content: existingKB.content,
-                note: `Auto-Snapshot before Bundle Update`,
-                importSessionId: importSessionId
-              };
-              existingKB.versions = existingKB.versions || [];
-              existingKB.versions.unshift(snapshotVersion);
-
-              existingKB.content = k.content;
-              existingKB.updatedAt = new Date().toISOString();
-              if (k.tags) existingKB.tags = k.tags;
-
-              await kStore.put(existingKB);
-              continue;
-            }
-          }
-
           // STANDARD DUPLICATE LOGIC
           const oldTitle = k.title;
           k.title = `${k.title} (imported)`;
           k.id = crypto.randomUUID();
+          kbIdMap.set(originalKbId, k.id);
           kbRenames.push({ oldTitle, newTitle: k.title });
+        } else {
+          // Keep existing ID if no conflict
+          kbIdMap.set(originalKbId, k.id);
         }
 
         if (!k.updatedAt) {
@@ -712,65 +727,99 @@ export const backupManager = {
         }
 
         attachImportMeta(k);
+        kbToSave.push(k);
+      }
+
+      // 4. Pre-process Prompt ID Mapping
+      if (finalData.prompt) {
+        const pStore = tx.objectStore('prompts');
+        const p = finalData.prompt;
+        const originalPromptId = p.id;
+        let finalPromptId = p.id;
+
+        if (finalData.updateIntent && finalData.updateIntent.existingPromptId) {
+          const existingPrompt = await pStore.get(finalData.updateIntent.existingPromptId);
+          if (existingPrompt) {
+            finalPromptId = existingPrompt.id;
+          }
+        } else {
+          finalPromptId = crypto.randomUUID();
+        }
+        promptIdMap.set(originalPromptId, finalPromptId);
+      }
+
+      // 5. Universal String Transformer for Names AND ID-Based Links
+      const escapeRegExp = (string) => {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      };
+
+      const updateText = (text) => {
+        if (!text || typeof text !== 'string') return text;
+        let newText = text;
+
+        // A. Remap Snippet Names (@Name and @{Name})
+        snippetRenames.forEach(({ oldName, newName }) => {
+          if (!oldName) return;
+          const escapedOldName = escapeRegExp(oldName);
+          const regex1 = new RegExp(`@${escapedOldName}\\b`, 'g');
+          const regex2 = new RegExp(`@\\{${escapedOldName}\\}`, 'g');
+          newText = newText.replace(regex1, `@{${newName}}`);
+          newText = newText.replace(regex2, `@{${newName}}`);
+        });
+
+        // B. Remap Snippet IDs in Notes (@#oldId -> @#newId)
+        snippetIdMap.forEach((newId, oldId) => {
+          if (!oldId || oldId === newId) return;
+          const regex = new RegExp(`@#${escapeRegExp(oldId)}(?![a-zA-Z0-9_.-])`, 'g');
+          newText = newText.replace(regex, `@#${newId}`);
+        });
+
+        // C. Remap KB Titles ([[Old Title]])
+        kbRenames.forEach(({ oldTitle, newTitle }) => {
+          if (!oldTitle) return;
+          const escapedOldTitle = escapeRegExp(oldTitle);
+          const regex = new RegExp(`\\[\\[${escapedOldTitle}\\]\\]`, 'g');
+          newText = newText.replace(regex, `[[${newTitle}]]`);
+        });
+
+        // D. Remap KB IDs in Notes ([[kb:oldId]] -> [[kb:newId]])
+        kbIdMap.forEach((newId, oldId) => {
+          if (!oldId || oldId === newId) return;
+          const regex = new RegExp(`\\[\\[kb:${escapeRegExp(oldId)}\\]\\]`, 'g');
+          newText = newText.replace(regex, `[[kb:${newId}]]`);
+        });
+
+        // E. Remap Prompt IDs in Notes ([[prompt:oldId]] -> [[prompt:newId]])
+        promptIdMap.forEach((newId, oldId) => {
+          if (!oldId || oldId === newId) return;
+          const regex = new RegExp(`\\[\\[prompt:${escapeRegExp(oldId)}\\]\\]`, 'g');
+          newText = newText.replace(regex, `[[prompt:${newId}]]`);
+        });
+
+        return newText;
+      };
+
+      // 6. Apply Remapping & Persist Snippets (Pass 2)
+      for (let s of snippetsToSave) {
+        s.content = updateText(s.content);
+        if (s.notes) s.notes = updateText(s.notes);
+        await sStore.put(s);
+      }
+
+      // 7. Apply Remapping & Persist Knowledge Base (Pass 2)
+      for (let k of kbToSave) {
+        k.content = updateText(k.content);
+        if (k.notes) k.notes = updateText(k.notes);
         await kStore.put(k);
       }
 
-      // 4. Process the Prompt (Smart Update references)
+      // 8. Process the Prompt (Smart Update references)
       if (finalData.prompt) {
         const pStore = tx.objectStore('prompts');
         let p = finalData.prompt;
 
         const originalPromptId = p.id;
-        let finalPromptId = p.id;
-        let isUpdate = false;
-        let existingPrompt = null;
-
-        if (finalData.updateIntent && finalData.updateIntent.existingPromptId) {
-          existingPrompt = await pStore.get(finalData.updateIntent.existingPromptId);
-          if (existingPrompt) {
-            isUpdate = true;
-            finalPromptId = existingPrompt.id;
-          }
-        }
-
-        if (!isUpdate) {
-          finalPromptId = crypto.randomUUID();
-        }
-
-        // Helper string replace function
-        const updateText = (text) => {
-          if (!text) return text;
-          let newText = text;
-
-          const escapeRegExp = (string) => {
-            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escapes special characters
-          };
-
-          snippetRenames.forEach(({ oldName, newName }) => {
-            if (!oldName) return;
-            const escapedOldName = escapeRegExp(oldName);
-            // Replace @oldName or @{oldName} with @{newName}
-            const regex1 = new RegExp(`@${escapedOldName}\\b`, 'g');
-            const regex2 = new RegExp(`@\\{${escapedOldName}\\}`, 'g');
-            newText = newText.replace(regex1, `@{${newName}}`);
-            newText = newText.replace(regex2, `@{${newName}}`);
-          });
-
-          kbRenames.forEach(({ oldTitle, newTitle }) => {
-            if (!oldTitle) return;
-            const escapedOldTitle = escapeRegExp(oldTitle);
-            // Replace [[oldTitle]] with [[newTitle]]
-            const regex = new RegExp(`\\[\\[${escapedOldTitle}\\]\\]`, 'g');
-            newText = newText.replace(regex, `[[${newTitle}]]`);
-          });
-
-          if (originalPromptId !== finalPromptId) {
-            const regex = new RegExp(`\\[\\[prompt:${escapeRegExp(originalPromptId)}\\]\\]`, 'g');
-            newText = newText.replace(regex, `[[prompt:${finalPromptId}]]`);
-          }
-
-          return newText;
-        };
+        const finalPromptId = promptIdMap.get(originalPromptId);
 
         p.content = updateText(p.content);
         if (p.notes) p.notes = updateText(p.notes);
@@ -781,6 +830,16 @@ export const backupManager = {
             content: updateText(step.content),
             notes: updateText(step.notes)
           }));
+        }
+
+        let isUpdate = false;
+        let existingPrompt = null;
+
+        if (finalData.updateIntent && finalData.updateIntent.existingPromptId) {
+          existingPrompt = await pStore.get(finalData.updateIntent.existingPromptId);
+          if (existingPrompt) {
+            isUpdate = true;
+          }
         }
 
         // INTELLIGENT UPDATE vs DUPLICATE LOGIC
