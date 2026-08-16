@@ -31,7 +31,27 @@ export class DeepseekStrategy extends AbstractBaseStrategy {
     }
 
     getInput() {
-        return document.querySelector('textarea#chat-input') || findBestTextInput();
+        // 1. Primary Chat Input (Logged-in state)
+        const chatInput = document.querySelector('textarea#chat-input') || 
+                          document.querySelector('textarea[placeholder*="DeepSeek" i]') ||
+                          document.querySelector('textarea[placeholder*="message" i]') ||
+                          document.querySelector('textarea[placeholder*="nachricht" i]');
+        
+        if (chatInput && !chatInput.disabled && !chatInput.readOnly) {
+            return chatInput;
+        }
+
+        // 2. Auth State Guard: If user is logged out / login modal is active, do NOT hijack login fields
+        const isLoggedOut = document.querySelector('input[type="password"]') || 
+                            document.querySelector('form[action*="login"], form[action*="auth"]') ||
+                            document.querySelector('[role="dialog"] input, div[class*="modal"] input');
+
+        if (isLoggedOut) {
+            return null; // Signals "No Chat Input Available / Login Required" cleanly
+        }
+
+        // 3. Fallback only if no auth form is visible
+        return findBestTextInput();
     }
 
     async getFileInput() {

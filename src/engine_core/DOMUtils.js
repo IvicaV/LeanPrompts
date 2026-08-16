@@ -117,8 +117,32 @@ export const findBestTextInput = () => {
     // Definition: What is a text input?
     const isTextInput = (el) => {
         const tag = el.tagName.toLowerCase();
+
+        // 🛡️ AUTH & LOGIN GUARD: Never hijack authentication / login inputs!
+        if (el.type === 'password') return false;
+
+        // Only filter standard <input> elements for auth keywords (Textareas & ContentEditables are always safe)
+        if (tag === 'input') {
+            const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+            const name = (el.getAttribute('name') || '').toLowerCase();
+            const id = (el.id || '').toLowerCase();
+            const placeholder = (el.placeholder || '').toLowerCase();
+
+            // Exclude typical login/signup text fields
+            if (autocomplete.includes('password') || autocomplete.includes('username') || autocomplete.includes('email')) return false;
+            if (name.includes('password') || name.includes('login') || id.includes('login') || id.includes('auth')) return false;
+            if (placeholder.includes('password') || placeholder.includes('email') || placeholder.includes('phone') || placeholder.includes('passwort')) return false;
+
+            // Exclude inputs sitting inside an authentication form
+            const parentForm = el.closest('form');
+            if (parentForm && parentForm.querySelector('input[type="password"]')) {
+                return false;
+            }
+        }
+
+        // Standard Prompt Targets
         if (tag === 'textarea') return true;
-        if (tag === 'input' && (el.type === 'text' || el.type === 'search' || el.type === 'email')) return true;
+        if (tag === 'input' && (el.type === 'text' || el.type === 'search')) return true;
         if (el.isContentEditable) return true;
         if (el.getAttribute('role') === 'textbox' || el.getAttribute('contenteditable') === 'true') return true;
         return false;
