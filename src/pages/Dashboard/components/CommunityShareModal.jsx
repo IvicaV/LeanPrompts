@@ -11,7 +11,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { X, Globe, CheckSquare, Square, Send, AlertTriangle, Layers, BookOpen, Check } from 'lucide-react';
 import { scanWorkflowDependencies } from '../../../utils/workflowScan';
 
-const DISCORD_UPLOAD_WORKFLOW_INVITE = "https://discord.gg/PxFrXPhbT";
+const DISCORD_UPLOAD_WORKFLOW_INVITE = "https://discord.gg/tnw6HJAq3c";
 
 export default function CommunityShareModal({ isOpen, onClose, prompt, snippets, knowledgeTiles, onNotification }) {
     // 1. Local States
