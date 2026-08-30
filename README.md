@@ -15,6 +15,8 @@
     <img src="https://img.shields.io/badge/Architecture-100%25_Local_First-10B981?style=for-the-badge&logo=shield&logoColor=white" alt="100% Local">
     <img src="https://img.shields.io/badge/API_Keys_and_Costs-Free_--_Not_Required-6366f1?style=for-the-badge" alt="Free - No API Keys Required">
     <img src="https://img.shields.io/badge/Works_Offline-Local_AI_(Ollama_%2F_LM_Studio)-4f46e5?style=for-the-badge&logo=server&logoColor=white" alt="Works Offline with Local AI">
+    <a href="https://leanprompts.app"><img src="https://img.shields.io/badge/Workflow_Hub-leanprompts.app-4338ca?style=for-the-badge&logo=astro&logoColor=white" alt="Website"></a>
+    <a href="https://discord.gg/WXfmFSzMNV"><img src="https://img.shields.io/badge/Community-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
     <a href="https://ko-fi.com/ivicav"><img src="https://img.shields.io/badge/Donate-Buy_Me_A_Coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
   </p>
 
@@ -106,8 +108,9 @@ LeanPrompts gives you absolute control over your AI interactions. Here is what m
 | Feature | Function |
 | :--- | :--- |
 | `{{ }}` **Smart Variables** | Generates tailored UIs. Use `{{Name}}` for text inputs, `{{Tone: A \| B}}` for **Dropdowns**, and `{{file: Briefing}}` for dedicated **File Dropzones**. |
-| `{{! }}` **Required Fields** | Enforces input safety. Prefix a variable with an exclamation mark (e.g., `{{!Target_Audience}}`) to block injection and highlight empty fields in amber until filled. |
-| `@` **Global Snippets** | Reusable logic blocks. Change `@BrandVoice` once, and it updates in all 50 prompts using it. |
+| `{{! }}` **Required Fields** | Enforces input safety. Prefix a variable with an exclamation mark (e.g., `{{!Target_Audience}}` or `{{!file: Data}}`) to block injection and highlight empty fields in amber until filled. |
+| `{{$...}}` **System Macros** | Auto-populates dynamic context on injection without prompting: `{{$date}}`, `{{$time}}`, `{{$day}}`, `{{$uuid}}`, `{{$language}}`. |
+| `@` **Global Snippets** | Reusable logic blocks. Change `@BrandVoice` once, and it updates in all 50 prompts using it. Supports variable bubbling and `@{Names with Spaces}`. |
 | ⛓️ **Prompt Chains** | Break complex tasks into logical steps. Inject Step 1 (Analyze), wait for output, then inject Step 2 (Execute). |
 | 🤫 **Secret Comments** | Use `%%`, `//`, `/* */`, or `<!-- -->` to write internal notes in your prompt. LeanPrompts strips them out before injection. |
 | 🌓 **Native Split-Screen** | One click to automatically align the LeanPrompts Sidebar side-by-side next to your LLM browser window. Zero Alt-Tabbing. |
@@ -239,31 +242,48 @@ I built LeanPrompts for speed. Keep your hands on the keyboard. *(Configure glob
 
 | Command | Windows / Linux | Mac | Action |
 | :--- | :--- | :--- | :--- |
-| **Quick Popup** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | <kbd>⌥</kbd> + <kbd>⇧</kbd> + <kbd>Q</kbd> | Open the Quick Access launcher popup. |
-| **Open Studio** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd> | <kbd>⌥</kbd> + <kbd>⇧</kbd> + <kbd>L</kbd> | Open the full Dashboard IDE. |
-| **New Prompt** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>J</kbd> | <kbd>⌥</kbd> + <kbd>⇧</kbd> + <kbd>J</kbd> | Open a new prompt draft in the Studio. |
+| **Quick Popup** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | <kbd>⌥</kbd> + <kbd>⇧</kbd> + <kbd>Q</kbd> | Open the Quick Access launcher popup. *(Global)* |
+| **Open Studio** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd> | <kbd>⌥</kbd> + <kbd>⇧</kbd> + <kbd>L</kbd> | Open the full Dashboard IDE. *(Global)* |
+| **New Prompt** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>J</kbd> | <kbd>⌥</kbd> + <kbd>⇧</kbd> + <kbd>J</kbd> | Open a new prompt draft in the Studio. *(Global)* |
 | **Command Palette**| <kbd>Ctrl</kbd> + <kbd>K</kbd> | <kbd>⌘</kbd> + <kbd>K</kbd> | Global search across templates and snippets. |
-| **Zen Mode** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> | <kbd>⌥</kbd> + <kbd>⇧</kbd> + <kbd>Z</kbd> | Collapse all sidebars and focus strictly on the editor. |
+| **Zen Mode** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> | <kbd>⌥</kbd> + <kbd>⇧</kbd> + <kbd>Z</kbd> | Collapse all sidebars for distraction-free writing. |
+| **Save Snapshot** | <kbd>Ctrl</kbd> + <kbd>S</kbd> | <kbd>⌘</kbd> + <kbd>S</kbd> | Save a manual version snapshot in history. |
+| **Toggle Preview** | <kbd>Ctrl</kbd> + <kbd>P</kbd> | <kbd>⌘</kbd> + <kbd>P</kbd> | Toggle live compiled prompt preview mode. |
+| **Find & Replace** | <kbd>Ctrl</kbd> + <kbd>F</kbd> | <kbd>⌘</kbd> + <kbd>F</kbd> | Search and replace text inside the active editor. |
 
 ---
 
-## 📦 Installation
+## 📦 Installation & Getting Started
 
-### Option 1: Official Web Stores (Recommended)
-Install directly from your browser's official store to ensure secure sandboxing and automatic updates.
+### 1. Install the Browser Extension (Free)
+Install directly from your browser's official store for automatic updates and secure sandboxing:
 
-*   **Chrome, Edge, Brave, Arc, and other Chromium browsers:**  
+*   🌐 **Chrome, Edge, Brave, Arc & Chromium:**  
     👉 **[Install from Chrome Web Store](https://chromewebstore.google.com/detail/leanprompts-studio/pbdbopolbilaemiphldmecmlppedajnd)**
-*   **Opera & Opera GX:**  
+*   🔴 **Opera & Opera GX:**  
     👉 **[Install from Opera Add-ons](https://addons.opera.com/de/extensions/details/leanprompts-studio/)**
 
-### Option 2: Local Developer Install
-If you want to review the code or run it locally:
+---
+
+### 2. Discover Verified Workflows & Blueprints 🚀
+Looking for ready-to-use prompt chains and playbooks?  
+Visit the official **[LeanPrompts Workflow Hub](https://leanprompts.app/explore/)** to browse and 1-click import verified prompt suites for:
+*   ⚡ **Full-Stack Development:** API TypeSync & Zod Contract Engines
+*   🛡️ **Security & Compliance:** ISO 27001 Audits & GDPR Pre-Screening
+*   🚨 **DevOps & SRE:** Log Sanitization & Blameless Post-Mortem RCAs
+*   🎨 **Design & Vision:** Procedural Midjourney Character Persistence
+
+👉 *Simply click **"Add to Studio"** on any workflow at [leanprompts.app](https://leanprompts.app) to inject it directly into your local extension.*
+
+---
+
+### 3. Local Developer Install (Build from Source)
+If you want to review the source code or run the extension locally:
 1. Clone this repository: `git clone https://github.com/IvicaV/LeanPrompts.git`
 2. Install dependencies: `npm install`
 3. Build the extension: `npm run build`
-4. Open your Chromium Browser and navigate to `chrome://extensions/`
-5. Enable **"Developer mode"** in the top right.
+4. Open your Chromium browser and navigate to `chrome://extensions/`
+5. Enable **"Developer mode"** in the top right corner.
 6. Click **"Load unpacked"** and select the generated `/dist` folder.
 
 ---
