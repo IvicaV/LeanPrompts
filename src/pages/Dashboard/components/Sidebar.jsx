@@ -275,14 +275,15 @@ export default function Sidebar({
                           style={{ top: colSortCoords.top, left: colSortCoords.left, pointerEvents: 'auto' }}
                         >
                           {[
-                            { id: 'alpha', label: 'Name', icon: ArrowDownAZ },
-                            { id: 'count', label: 'Count', icon: Clock },
-                            { id: 'date', label: 'Created', icon: Calendar }
+                            { id: 'alpha', label: 'Name', icon: ArrowDownAZ, tooltip: 'Sort alphabetically (A–Z)' },
+                            { id: 'count', label: 'Count', icon: Clock, tooltip: 'Sort by number of prompts & snippets' },
+                            { id: 'date', label: 'Created', icon: Calendar, tooltip: 'Sort by creation date (newest first)' }
                           ].map(opt => (
                             <button
                               key={opt.id}
                               onClick={() => { setColSort(opt.id); setIsColSortOpen(false); }}
                               className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${colSort === opt.id ? 'bg-primary/10 text-primary font-medium' : 'text-text-muted hover:bg-bg-hover hover:text-text-main'}`}
+                              title={opt.tooltip}
                             >
                               <opt.icon size={12} />
                               <span>{opt.label}</span>
@@ -479,14 +480,15 @@ export default function Sidebar({
                           style={{ top: tagSortCoords.top, left: tagSortCoords.left, pointerEvents: 'auto' }}
                         >
                           {[
-                            { id: 'alpha', label: 'Name', icon: ArrowDownAZ },
-                            { id: 'count', label: 'Count', icon: Clock },
-                            { id: 'date', label: 'Created', icon: Calendar }
+                            { id: 'alpha', label: 'Name', icon: ArrowDownAZ, tooltip: 'Sort alphabetically (A–Z)' },
+                            { id: 'count', label: 'Count', icon: Clock, tooltip: 'Sort by usage frequency (most used first)' },
+                            { id: 'date', label: 'Created', icon: Calendar, tooltip: 'Sort by date (recently used / created first)' }
                           ].map(opt => (
                             <button
                               key={opt.id}
                               onClick={() => { setTagSort(opt.id); setIsSortOpen(false); }}
                               className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${tagSort === opt.id ? 'bg-primary/10 text-primary font-medium' : 'text-text-muted hover:bg-bg-hover hover:text-text-main'}`}
+                              title={opt.tooltip}
                             >
                               <opt.icon size={12} />
                               <span>{opt.label}</span>
