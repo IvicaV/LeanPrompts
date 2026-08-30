@@ -12,12 +12,24 @@
   </p>
 
   <p>
-    <img src="https://img.shields.io/badge/Architecture-100%25_Local_First-10B981?style=for-the-badge&logo=shield&logoColor=white" alt="100% Local">
-    <img src="https://img.shields.io/badge/API_Keys_and_Costs-Free_--_Not_Required-6366f1?style=for-the-badge" alt="Free - No API Keys Required">
-    <img src="https://img.shields.io/badge/Works_Offline-Local_AI_(Ollama_%2F_LM_Studio)-4f46e5?style=for-the-badge&logo=server&logoColor=white" alt="Works Offline with Local AI">
-    <a href="https://leanprompts.app"><img src="https://img.shields.io/badge/Workflow_Hub-leanprompts.app-4338ca?style=for-the-badge&logo=astro&logoColor=white" alt="Website"></a>
-    <a href="https://discord.gg/WXfmFSzMNV"><img src="https://img.shields.io/badge/Community-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
-    <a href="https://ko-fi.com/ivicav"><img src="https://img.shields.io/badge/Donate-Buy_Me_A_Coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
+    <a href="#-privacy-security--trust-100-local-first">
+      <img src="https://img.shields.io/badge/Architecture-100%25_Local_First-10B981?style=for-the-badge&logo=shield&logoColor=white" alt="100% Local">
+    </a>
+    <a href="#-zero-api-keys-zero-token-bills">
+      <img src="https://img.shields.io/badge/API_Keys_and_Costs-Free_--_Not_Required-6366f1?style=for-the-badge" alt="Free - No API Keys Required">
+    </a>
+    <a href="#-privacy-security--trust-100-local-first">
+      <img src="https://img.shields.io/badge/Works_Offline-Local_AI_(Ollama_%2F_LM_Studio)-4f46e5?style=for-the-badge&logo=server&logoColor=white" alt="Works Offline with Local AI">
+    </a>
+    <a href="https://leanprompts.app" target="_blank">
+      <img src="https://img.shields.io/badge/Workflow_Hub-leanprompts.app-4338ca?style=for-the-badge&logo=astro&logoColor=white" alt="Website">
+    </a>
+    <a href="https://discord.gg/WXfmFSzMNV" target="_blank">
+      <img src="https://img.shields.io/badge/Community-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord">
+    </a>
+    <a href="https://ko-fi.com/ivicav" target="_blank">
+      <img src="https://img.shields.io/badge/Donate-Buy_Me_A_Coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi">
+    </a>
   </p>
 
   <p>
