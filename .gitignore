@@ -36,6 +36,12 @@ build/
 # Testing
 coverage
 .nyc_output
+tests/
+playwright.config.js
+PLAYBOOK_E2E_TESTING.md
+playwright-report/
+test-results/
+.playwright/
 
 # Environment Variables (Sicherheit!)
 .env
@@ -50,6 +56,10 @@ public/config.js
 .agent/
 SCRATCHPAD.md
 project_context.txt
+*.py
+*_context.txt
+web_interaction_context.txt
+bundle_web_interaction.py
 fix_adapters.py
 restore_adapters.py
 tasks/
