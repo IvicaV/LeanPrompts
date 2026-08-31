@@ -1,6 +1,6 @@
 {
   "name": "lean-prompts",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "author": "Ivica Vrgoc <https://github.com/IvicaV>",
   "license": "AGPL-3.0",
   "type": "module",
@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "zip": "node zip.js",
     "release": "npm run build && npm run zip",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "bundle:web": "python bundle_web_interaction.py",
+    "bundle:full": "node bundle_code.js"
   },
   "dependencies": {
     "@codemirror/lang-html": "^6.4.11",
