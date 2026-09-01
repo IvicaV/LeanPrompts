@@ -409,6 +409,9 @@ export default function Dashboard() {
           sessionCache.current = mergedCache;
 
           if (activePresetNameFromDB) {
+            if (!mergedCache[activeKey]) {
+              mergedCache[activeKey] = { values: {}, files: [] };
+            }
             mergedCache[activeKey].activePresetName = activePresetNameFromDB;
           }
           setActivePresetName(mergedCache[activeKey]?.activePresetName || null);
@@ -506,6 +509,9 @@ export default function Dashboard() {
           sessionCache.current = mergedCache;
 
           if (activePresetNameFromDB) {
+            if (!mergedCache[activeKey]) {
+              mergedCache[activeKey] = { values: {}, files: [] };
+            }
             mergedCache[activeKey].activePresetName = activePresetNameFromDB;
           }
           setActivePresetName(mergedCache[activeKey]?.activePresetName || null);
