@@ -557,9 +557,6 @@ export default function Popup() {
             }
         });
 
-        // RESTORED: Initial Connection Check
-        checkContext();
-
         // Listener for Theme Changes (Global Sync)
         const handleStorageChange = (changes, area) => {
             if (area === 'local' && (changes.lp_theme || changes.lp_saved_drafts || changes.lp_quick_prompt_draft)) {
@@ -1108,10 +1105,15 @@ export default function Popup() {
         setShowInfo(false);
         setScrollEnabledStepId(null); // Reset scroll status
 
+        // 🚀 Optimistic View Switch: Sofort umschalten ohne auf DB/Storage-Latenz zu warten
+        setVariableValues({});
+        setStepFiles({});
+        setView('fill');
+
         let restoredValues = {};
         let restoredStepFiles = {};
 
-        // RESTORE LOGIC (Async!)
+        // RESTORE LOGIC (Async im Hintergrund)
         if (keepValues) {
             try {
                 // 1. Dateien IMMER aus der IndexedDB laden, wenn vorhanden (Dashboard-Sync)
@@ -1160,7 +1162,6 @@ export default function Popup() {
 
         setVariableValues(restoredValues);
         setStepFiles(restoredStepFiles);
-        setView('fill');
     };
 
     // FILE HANDLERS PER STEP
@@ -3049,11 +3050,8 @@ export default function Popup() {
                                             key={prompt.id}
                                             id={`item-${index}`}
                                             onClick={() => {
-                                                if (isSelected) {
-                                                    handleSelectPrompt(prompt);
-                                                } else {
-                                                    setSelectedIndex(index);
-                                                }
+                                                setSelectedIndex(index);
+                                                handleSelectPrompt(prompt);
                                             }}
                                             className={`group relative p-4 rounded-2xl cursor-pointer border transition-all duration-200 ${
                                                 isPinned ? 'popup-pinned-item shadow-sm ' : ''
@@ -3119,7 +3117,9 @@ export default function Popup() {
                                                 ) : (
                                                     <div className="text-[12px] dark:text-zinc-400 text-text-muted line-clamp-2 leading-relaxed font-normal dark:group-hover:text-zinc-300 group-hover:text-text-main transition-colors">
                                                          {(() => {
-                                                             let content = stripComments(prompt.content || "");
+                                                             const raw = prompt.content || "";
+                                                             const sample = raw.length > 300 ? raw.slice(0, 300) : raw;
+                                                             let content = stripComments(sample);
                                                              content = content.replace(/!\[(.*?)\]\((?:https?:\/\/|data:image\/)[^)]*\)/g, '[Image: $1]');
                                                              return content || "Empty...";
                                                          })()}
