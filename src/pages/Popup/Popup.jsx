@@ -2238,25 +2238,40 @@ export default function Popup() {
                                 </div>
                             </div>
 
-                            <button
-                                onClick={handleOpenDashboard}
-                                className="p-2 rounded-lg dark:text-zinc-400 text-text-muted dark:hover:bg-zinc-900/80 hover:bg-zinc-100 dark:hover:text-zinc-100 hover:text-indigo-600 transition-all"
-                                title="Edit Prompt in Dashboard"
-                            >
-                                <LayoutGrid size={18} strokeWidth={2} />
-                            </button>
-
-                            {/* FRESH REBUILT INFO BUTTON */}
-                            <button
-                                onClick={() => setShowInfo(!showInfo)}
-                                className={`p-2 rounded-lg transition-all ${showInfo
-                                    ? 'bg-indigo-600 dark:bg-purple-600 text-white shadow-md'
-                                    : 'dark:text-zinc-400 text-text-muted dark:hover:bg-zinc-900/80 hover:bg-zinc-100 dark:hover:text-zinc-100 hover:text-indigo-600 dark:hover:text-purple-400'
+                            <div className="flex items-center gap-1">
+                                <button
+                                    id="popup-split-btn"
+                                    onClick={handleSplitScreen}
+                                    className={`p-2 rounded-lg transition-all ${
+                                        isSplitScreen 
+                                        ? 'bg-primary/10 text-primary dark:text-primary dark:bg-primary/20 hover:bg-primary/20' 
+                                        : 'dark:text-zinc-400 text-text-muted dark:hover:bg-zinc-900/80 hover:bg-zinc-100 dark:hover:text-zinc-100 hover:text-indigo-600 dark:hover:text-purple-400'
                                     }`}
-                                title="Quick Guide"
-                            >
-                                <Info size={18} strokeWidth={2.5} />
-                            </button>
+                                    title={isSplitScreen ? "Exit Split Screen & Maximize Browser" : "Split Screen"}
+                                >
+                                    {isSplitScreen ? <Maximize size={18} strokeWidth={2} /> : <PanelRight size={18} strokeWidth={2} />}
+                                </button>
+
+                                <button
+                                    onClick={handleOpenDashboard}
+                                    className="p-2 rounded-lg dark:text-zinc-400 text-text-muted dark:hover:bg-zinc-900/80 hover:bg-zinc-100 dark:hover:text-zinc-100 hover:text-indigo-600 transition-all"
+                                    title="Edit Prompt in Dashboard"
+                                >
+                                    <LayoutGrid size={18} strokeWidth={2} />
+                                </button>
+
+                                {/* FRESH REBUILT INFO BUTTON */}
+                                <button
+                                    onClick={() => setShowInfo(!showInfo)}
+                                    className={`p-2 rounded-lg transition-all ${showInfo
+                                        ? 'bg-indigo-600 dark:bg-purple-600 text-white shadow-md'
+                                        : 'dark:text-zinc-400 text-text-muted dark:hover:bg-zinc-900/80 hover:bg-zinc-100 dark:hover:text-zinc-100 hover:text-indigo-600 dark:hover:text-purple-400'
+                                        }`}
+                                    title="Quick Guide"
+                                >
+                                    <Info size={18} strokeWidth={2.5} />
+                                </button>
+                            </div>
                         </>
                     )}
                 </div>
