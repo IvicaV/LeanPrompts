@@ -2045,8 +2045,9 @@ export default function Popup() {
                 return;
             }
 
-            // Exception: Allow Arrow navigation from Search Input
-            if (e.target.tagName === 'INPUT' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            // Exception: Allow Arrow navigation and Enter from Search Input / OmniBar
+            const isSearchInput = e.target.id === 'popup-search-input' || e.target === inputRef.current;
+            if (isSearchInput && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || (e.key === 'Enter' && !e.shiftKey))) {
                 // Pass through to navigation logic
             } else {
                 return;
@@ -2065,7 +2066,7 @@ export default function Popup() {
             }
         }
 
-        if (view === 'list') {
+        if (view === 'list' && filteredPrompts.length > 0) {
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 const nextIdx = Math.min(selectedIndex + 1, filteredPrompts.length - 1);
@@ -2086,6 +2087,20 @@ export default function Popup() {
             if (e.key === 'Escape') { setView('list'); }
         }
     };
+
+    const handleKeyDownRef = useRef(handleKeyDown);
+    useEffect(() => {
+        handleKeyDownRef.current = handleKeyDown;
+    });
+
+    useEffect(() => {
+        const onGlobalKeyDown = (e) => {
+            if (e.defaultPrevented) return;
+            handleKeyDownRef.current?.(e);
+        };
+        window.addEventListener('keydown', onGlobalKeyDown);
+        return () => window.removeEventListener('keydown', onGlobalKeyDown);
+    }, []);
 
     // --- RENDER ---
     const handleOpenSettings = () => {
@@ -2292,15 +2307,7 @@ export default function Popup() {
                                     setTimeout(() => setShowHistory(false), 200);
                                     if (!search) e.target.style.height = '46px';
                                 }}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'ArrowDown') {
-                                        if (filteredPrompts.length > 0) {
-                                            e.preventDefault();
-                                            setSelectedIndex(0);
-                                            document.getElementById(`item-0`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-                                        }
-                                    }
-                                }}
+                                onKeyDown={handleKeyDown}
                                 style={{ minHeight: '46px', height: '46px' }}
                             />
 
