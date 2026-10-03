@@ -682,7 +682,8 @@ const performInjection = async (tabId, payload) => {
 
         // AGGREGATE ERRORS & STATUS
         const isAnyBusy = results.some(r => r && r.reason === "BUSY");
-        const isAnyClosed = results.some(r => r && (r.error === "CHANNEL_CLOSED" || r.error === "NO_RESPONSE"));
+        const safeMainFrameResult = mainFrameResult || (results.length > 0 ? results[0] : null);
+        const isMainFrameClosed = !safeMainFrameResult || safeMainFrameResult.error === "CHANNEL_CLOSED" || safeMainFrameResult.error === "NO_RESPONSE";
 
         // 3. ONLY TRUST NON-SILENT ERRORS FROM MAIN FRAME (FRAME 0)
         const mainFrameError = results.find(r => r && r.frameId === 0 && r.error && !r.silent && r.error !== "CHANNEL_CLOSED" && r.error !== "NO_RESPONSE" && !r.reason);
@@ -691,11 +692,11 @@ const performInjection = async (tabId, payload) => {
         }
 
         // RETRY LOGIC for BUSY or CHANNEL_CLOSED
-        // (Using the already-computed aggregate states from lines 476-477)
+        // (Using the already-computed aggregate states)
 
-        // SELF-HEALING: If channel is closed on the first attempt, try to re-inject the content script
+        // SELF-HEALING: If main frame channel is closed on the first attempt, try to re-inject the content script
         // This happens when the extension was updated and existing tabs have "orphaned" scripts.
-        if (isAnyClosed && i === 0) {
+        if (isMainFrameClosed && i === 0) {
           // RACE CONDITION GUARD: Prevent multiple parallel injections
           const existingGuard = await getReinjectionGuard(tabId);
           if (existingGuard) {
@@ -725,10 +726,10 @@ const performInjection = async (tabId, payload) => {
           }
         }
 
-        // If it's been CHANNEL_CLOSED for > 5s (and self-healing failed/wasn't possible), give up.
+        // If main frame has been CHANNEL_CLOSED for > 5s (and self-healing failed/wasn't possible), give up.
         // CRITICAL FIX: We only return "Inactive" if NO frame is currently "BUSY".
         // This prevents cross-origin helper iframes (e.g. in AI Studio) from poisoning the global state.
-        if (isAnyClosed && !isAnyBusy && (Date.now() - startTime > CHANNEL_CLOSED_TIMEOUT_MS)) {
+        if (isMainFrameClosed && !isAnyBusy && (Date.now() - startTime > CHANNEL_CLOSED_TIMEOUT_MS)) {
           chrome.tabs.get(tabId, (tab) => {
             const url = tab?.url || "Unknown URL";
             console.error(`LeanPrompts: Injection failed because script is inactive on: ${url}`);
@@ -1457,114 +1458,111 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
 
           if (targetTab) {
-            chrome.windows.update(targetTab.windowId, { focused: true }, async () => {
-              try {
-                let shouldResetContext = !!forceNavigate;
-                let targetUrl = url;
+            try {
+              await chrome.windows.update(targetTab.windowId, { focused: true });
+            } catch (e) { }
+            try {
+              await chrome.tabs.update(targetTab.id, { active: true });
+            } catch (e) { }
 
-                if (!shouldResetContext) {
-                  await ensureContentScriptActive(targetTab.id);
-                  const check = await new Promise(resolve => {
-                    chrome.tabs.sendMessage(targetTab.id, { action: "CHECK_COMPATIBILITY_v105" }, (response) => {
-                      if (chrome.runtime.lastError) resolve(null);
-                      // Security Handshake: Only trust responses from our verified code
-                      else if (response && response.version !== "1.0.5-FIX") {
-                        console.warn("LeanPrompts: Ignoring legacy ghost script compatibility report.");
-                        resolve({ ...response, hasInput: false });
-                      }
-                      else resolve(response);
-                    });
-                    setTimeout(() => resolve(null), 6000);
+            try {
+              let shouldResetContext = !!forceNavigate;
+              let targetUrl = url;
+
+              if (!shouldResetContext) {
+                await ensureContentScriptActive(targetTab.id);
+                const check = await new Promise(resolve => {
+                  chrome.tabs.sendMessage(targetTab.id, { action: "CHECK_COMPATIBILITY_v105" }, { frameId: 0 }, (response) => {
+                    if (chrome.runtime.lastError) resolve(null);
+                    // Security Handshake: Only trust responses from our verified code
+                    else if (response && response.version !== "1.0.5-FIX") {
+                      console.warn("LeanPrompts: Ignoring legacy ghost script compatibility report.");
+                      resolve({ ...response, hasInput: false });
+                    }
+                    else resolve(response);
                   });
+                  setTimeout(() => resolve(null), 6000);
+                });
 
-                  // AI STUDIO UPGRADE: Ensure we always land on a chat-capable URL if navigation is required.
-                  const isAIStudio = targetTab.url.includes('aistudio.google.com') || (url && url.includes('aistudio.google.com'));
+                // AI STUDIO UPGRADE: Ensure we always land on a chat-capable URL if navigation is required.
+                const isAIStudio = targetTab.url.includes('aistudio.google.com') || (url && url.includes('aistudio.google.com'));
 
-                  if (isAIStudio) {
-                    const isChatPage = targetTab.url.includes('/prompts/') || targetTab.url.includes('/playground');
-                    if (!isChatPage || !check || !check.hasInput) {
-                      shouldResetContext = true;
-                      // Upgrade URL to the chat-capable endpoint
-                      if (targetUrl === 'https://aistudio.google.com' || targetUrl === 'https://aistudio.google.com/') {
-                        targetUrl = 'https://aistudio.google.com/prompts/new_chat';
-                      }
-                    }
-                  } else if (!check || !check.hasInput) {
+                if (isAIStudio) {
+                  const isChatPage = targetTab.url.includes('/prompts/') || targetTab.url.includes('/playground');
+                  if (!isChatPage || !check || !check.hasInput) {
                     shouldResetContext = true;
+                    // Upgrade URL to the chat-capable endpoint
+                    if (targetUrl === 'https://aistudio.google.com' || targetUrl === 'https://aistudio.google.com/') {
+                      targetUrl = 'https://aistudio.google.com/prompts/new_chat';
+                    }
                   }
+                } else if (!check || !check.hasInput) {
+                  shouldResetContext = true;
                 }
+              }
 
-                if (shouldResetContext) {
-                  // ZERO-REGRESSION FIX: SPAs like AI Studio don't reload if the URL only changes query params.
-                  // We must force a hard reload to clear the isolated world context (window.__LP_CONTEXT_INVALIDATED).
-                  const currentCleanUrl = targetTab.url.split('?')[0].split('#')[0];
-                  const targetCleanUrl = targetUrl.split('?')[0].split('#')[0];
-                  
-                  if (currentCleanUrl === targetCleanUrl) {
-                      // SURGICAL FIX: Force tab to foreground before reloading to prevent silent background injection
-                      chrome.tabs.update(targetTab.id, { active: true }, () => {
-                          chrome.tabs.reload(targetTab.id);
-                      });
-                  } else {
-                      chrome.tabs.update(targetTab.id, { url: targetUrl, active: true });
-                  }
-                  
-                  let isResolved = false;
-                  let fallbackTimer;
-
-                  const proceedWithInjection = async () => {
-                    if (isResolved) return;
-                    isResolved = true;
-                    chrome.tabs.onUpdated.removeListener(listener);
-                    clearTimeout(fallbackTimer);
-
-                    try {
-                      // ZERO-REGRESSION FIX: SPA Hydration Buffer
-                      // Gibt dem Browser 800ms Zeit, das alte DOM zu zerstören und die neuen Upload-Buttons 
-                      // von React/Angular rendern zu lassen, bevor der Datei-Injektor sucht.
-                      await new Promise(r => setTimeout(r, 800));
-
-                      await waitForContentScript(targetTab.id);
-                      if (!text && (!files || files.length === 0)) {
-                        sendResponse({ success: true, status: "opened_new" });
-                      } else {
-                        const result = await performInjection(targetTab.id, { action: "INJECT_PROMPT_v105", text, files });
-                        sendResponse(result);
-                      }
-                    } catch (err) {
-                      console.error("LeanPrompts: proceedWithInjection failed", err);
-                      sendResponse({ success: false, error: "Injection failed during load: " + err.message });
-                    }
-                  };
-
-                  const listener = (tabId, changeInfo) => {
-                    if (tabId === targetTab.id && changeInfo.status === 'complete') {
-                      proceedWithInjection();
-                    }
-                  };
-
-                  chrome.tabs.onUpdated.addListener(listener);
-                  // Wachhund: Falls Chrome 'complete' bei SPAs verschluckt.
-                  // ZERO-REGRESSION FIX: Entschärft auf 12s, um modernen SPAs Zeit zum Laden zu geben.
-                  fallbackTimer = setTimeout(proceedWithInjection, 12000);
+              if (shouldResetContext) {
+                // ZERO-REGRESSION FIX: SPAs like AI Studio don't reload if the URL only changes query params.
+                // We must force a hard reload to clear the isolated world context (window.__LP_CONTEXT_INVALIDATED).
+                const currentCleanUrl = targetTab.url.split('?')[0].split('#')[0];
+                const targetCleanUrl = targetUrl.split('?')[0].split('#')[0];
+                
+                if (currentCleanUrl === targetCleanUrl) {
+                  chrome.tabs.reload(targetTab.id);
                 } else {
-                  // ZERO-REGRESSION FIX: Bedingungslose Aktivierung von Fenster und Tab.
-                  // Umgeht veraltete "targetTab.active" Snapshots und OS-Restriktionen, die Hintergrund-Injektionen verursachen.
-                  chrome.windows.update(targetTab.windowId, { focused: true });
-                  chrome.tabs.update(targetTab.id, { active: true }, async () => {
+                  chrome.tabs.update(targetTab.id, { url: targetUrl, active: true });
+                }
+                
+                let isResolved = false;
+                let fallbackTimer;
+
+                const proceedWithInjection = async () => {
+                  if (isResolved) return;
+                  isResolved = true;
+                  chrome.tabs.onUpdated.removeListener(listener);
+                  clearTimeout(fallbackTimer);
+
+                  try {
+                    // ZERO-REGRESSION FIX: SPA Hydration Buffer
+                    // Gibt dem Browser 800ms Zeit, das alte DOM zu zerstören und die neuen Upload-Buttons 
+                    // von React/Angular rendern zu lassen, bevor der Datei-Injektor sucht.
+                    await new Promise(r => setTimeout(r, 800));
+
                     await waitForContentScript(targetTab.id);
                     if (!text && (!files || files.length === 0)) {
-                      sendResponse({ success: true, status: "opened" });
+                      sendResponse({ success: true, status: "opened_new" });
                     } else {
                       const result = await performInjection(targetTab.id, { action: "INJECT_PROMPT_v105", text, files });
                       sendResponse(result);
                     }
-                  });
+                  } catch (err) {
+                    console.error("LeanPrompts: proceedWithInjection failed", err);
+                    sendResponse({ success: false, error: "Injection failed during load: " + err.message });
+                  }
+                };
+
+                const listener = (tabId, changeInfo) => {
+                  if (tabId === targetTab.id && changeInfo.status === 'complete') {
+                    proceedWithInjection();
+                  }
+                };
+
+                chrome.tabs.onUpdated.addListener(listener);
+                // Wachhund: Falls Chrome 'complete' bei SPAs verschluckt.
+                // ZERO-REGRESSION FIX: Entschärft auf 12s, um modernen SPAs Zeit zum Laden zu geben.
+                fallbackTimer = setTimeout(proceedWithInjection, 12000);
+              } else {
+                await waitForContentScript(targetTab.id);
+                if (!text && (!files || files.length === 0)) {
+                  sendResponse({ success: true, status: "opened" });
+                } else {
+                  const result = await performInjection(targetTab.id, { action: "INJECT_PROMPT_v105", text, files });
+                  sendResponse(result);
                 }
-              } catch (e) {
-                sendResponse({ success: false, error: "Injection context error: " + e.message });
               }
-            });
+            } catch (e) {
+              sendResponse({ success: false, error: "Injection context error: " + e.message });
+            }
 
           } else {
             // New Tab Case

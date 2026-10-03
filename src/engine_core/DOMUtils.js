@@ -86,8 +86,8 @@ export const waitForElement = (checker, timeout = 5000) => {
                 return true;
             }
 
-            // High-Frequency Check (100ms) for snappy reaction
-            setTimeout(() => requestAnimationFrame(check), 100);
+            // High-Frequency Check (100ms) for snappy reaction without background tab freezing
+            setTimeout(check, 100);
             return false;
         };
 

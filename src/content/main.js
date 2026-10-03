@@ -286,7 +286,7 @@ async function waitUntil(conditionFn, timeout = 5000) {
         resolve(false);
         return;
       }
-      requestAnimationFrame(loop);
+      setTimeout(loop, 100);
     };
     loop();
   });
@@ -450,6 +450,11 @@ try {
 
     // CHECK COMPATIBILITY HANDLER (Async with Polling)
     if (request.action === "CHECK_COMPATIBILITY_v105") {
+      // 0. Frame Guard: Nur der Hauptframe darf Kompatibilität melden
+      if (window.self !== window.top) {
+        return false;
+      }
+
       // 1. Check Manual Override first (instant)
       if (manualOverrideElement && document.body.contains(manualOverrideElement)) {
         sendResponse({
