@@ -2407,7 +2407,7 @@ export default function Popup() {
                 </div>
 
                 {/* === MAIN CONTENT === */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pt-3 pb-[50vh] bg-zinc-50/50 dark:bg-[#09090b] relative" ref={listRef} style={{ overflowAnchor: 'none' }}>
+                <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pt-3 pb-[50vh] scroll-pb-28 scroll-pt-4 bg-zinc-50/50 dark:bg-[#09090b] relative" ref={listRef} style={{ overflowAnchor: 'none', scrollPaddingBottom: '110px', scrollPaddingTop: '16px' }}>
 
                     {view === 'fill' && selectedPrompt ? (
                         <>
@@ -3060,7 +3060,8 @@ export default function Popup() {
                                                 setSelectedIndex(index);
                                                 handleSelectPrompt(prompt);
                                             }}
-                                            className={`group relative p-4 rounded-2xl cursor-pointer border transition-all duration-200 ${
+                                            style={{ scrollMarginBottom: '110px', scrollMarginTop: '16px' }}
+                                            className={`group relative p-4 rounded-2xl cursor-pointer border transition-all duration-200 scroll-mb-28 scroll-mt-4 ${
                                                 isPinned ? 'popup-pinned-item shadow-sm ' : ''
                                             }${
                                                 isSelected 
