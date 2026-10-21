@@ -26,6 +26,8 @@ import { Share2, Download, Eye, EyeOff, Save, Check, Trash2, Copy, ArrowUp, Arro
 import PromptEditor from '../../../components/PromptEditor';
 import TagInput from '../../../components/TagInput';
 import MultiTaggerModal from '../../../components/MultiTaggerModal';
+import VariableHelperModal from '../../../components/VariableHelperModal';
+import { parseVariableTag } from '../../../utils/variableParser';
 import CommunityShareModal from './CommunityShareModal';
 import SuggestionBar from './SuggestionBar';
 import { getItemTooltip } from '../../../utils/tooltipHelper';
@@ -85,6 +87,37 @@ export default function Workspace({
         return () => window.removeEventListener('click', closeMenu);
     }, [activeStepMenuId]);
     // --- END STEP CONTEXT MENU STATE ---
+
+    // --- VARIABLE HELPER MODAL STATE ---
+    const [varModalState, setVarModalState] = React.useState({
+        isOpen: false,
+        mode: 'create',
+        initialConfig: null,
+        initialText: '',
+        targetRange: null
+    });
+
+    React.useEffect(() => {
+        const handleOpenHelper = (e) => {
+            const { mode, raw, from, to, config, initialText } = e.detail || {};
+            setVarModalState({
+                isOpen: true,
+                mode: mode || 'create',
+                initialConfig: config || (raw ? parseVariableTag(raw) : null),
+                initialText: initialText || '',
+                targetRange: typeof from === 'number' && typeof to === 'number' ? { from, to } : null
+            });
+        };
+        window.addEventListener('lp-open-variable-helper', handleOpenHelper);
+        return () => window.removeEventListener('lp-open-variable-helper', handleOpenHelper);
+    }, []);
+
+    const handleApplyVariable = ({ syntax, mode, from, to }) => {
+        window.dispatchEvent(new CustomEvent('lp-apply-variable-syntax', {
+            detail: { syntax, mode, from, to }
+        }));
+    };
+    // --- END VARIABLE HELPER MODAL STATE ---
 
     // --- START: STEP LLM SCROLL LOGIC ---
     const [stepLlmScroll, setStepLlmScroll] = React.useState({ left: false, right: false });
@@ -892,6 +925,26 @@ export default function Workspace({
                                             }`}>
                                             Step {index + 1}
                                         </div>
+                                        {isStepActive && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const selectedText = window.getSelection()?.toString()?.trim() || "";
+                                                    setVarModalState({
+                                                        isOpen: true,
+                                                        mode: 'create',
+                                                        initialConfig: null,
+                                                        initialText: selectedText,
+                                                        targetRange: null
+                                                    });
+                                                }}
+                                                className="flex items-center justify-center w-6 h-6 rounded-md bg-bg-surface hover:bg-primary/10 text-text-muted hover:text-primary border border-border/40 hover:border-primary/30 transition-all shrink-0 shadow-sm"
+                                                title="Insert Variable (Open Variable Helper)"
+                                            >
+                                                <Plus size={13} strokeWidth={2.5} />
+                                            </button>
+                                        )}
                                         <input
                                             value={localStepTitles[step.id] || ""}
                                             onChange={(e) => onStepTitleChange(step.id, e.target.value)}
@@ -1436,6 +1489,16 @@ export default function Workspace({
                 </AnimatePresence>,
                 document.body
             )}
+
+            <VariableHelperModal
+                isOpen={varModalState.isOpen}
+                onClose={() => setVarModalState(prev => ({ ...prev, isOpen: false }))}
+                mode={varModalState.mode}
+                initialConfig={varModalState.initialConfig}
+                initialText={varModalState.initialText}
+                targetRange={varModalState.targetRange}
+                onApply={handleApplyVariable}
+            />
         </div>
     );
 }

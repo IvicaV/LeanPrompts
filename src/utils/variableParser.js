@@ -562,3 +562,124 @@ export const normalizeMarkdownTables = (text) => {
 
   return normalized;
 };
+
+/**
+ * Parses a single variable tag string (e.g. "{{!Topic:AI}}") into structured configuration.
+ * Returns { type, name, defaultValue, options, isRequired, macroName }
+ */
+export const parseVariableTag = (tagStr) => {
+  if (!tagStr) return { type: 'text', name: '', defaultValue: '', options: [], isRequired: false, macroName: '' };
+
+  const trimmed = tagStr.trim();
+  // Strip outer curly braces {{ and }} if present
+  let inner = trimmed;
+  if (inner.startsWith('{{') && inner.endsWith('}}')) {
+    inner = inner.slice(2, -2).trim();
+  }
+
+  // Check for System Macros ($date, $time, etc.)
+  if (inner.startsWith('$')) {
+    return {
+      type: 'macro',
+      name: inner,
+      macroName: inner.toLowerCase(),
+      defaultValue: '',
+      options: [],
+      isRequired: false
+    };
+  }
+
+  // Check for required flag (!)
+  let isRequired = false;
+  if (inner.startsWith('!')) {
+    isRequired = true;
+    inner = inner.slice(1).trim();
+  }
+
+  // Check for File Dropzone (file: or !file:)
+  const filePrefixMatch = /^file:\s*(.*)$/i.exec(inner);
+  if (filePrefixMatch) {
+    return {
+      type: 'file',
+      name: filePrefixMatch[1].trim(),
+      defaultValue: '',
+      options: [],
+      isRequired,
+      macroName: ''
+    };
+  }
+
+  // Check for colon: default value or dropdown enum
+  const colonIdx = inner.indexOf(':');
+  if (colonIdx !== -1) {
+    const name = inner.slice(0, colonIdx).trim();
+    const rawRest = inner.slice(colonIdx + 1).trim();
+
+    if (rawRest.includes('|')) {
+      const options = rawRest.split('|').map(s => s.trim()).filter(Boolean);
+      return {
+        type: 'dropdown',
+        name,
+        defaultValue: options[0] || '',
+        options,
+        isRequired,
+        macroName: ''
+      };
+    }
+
+    return {
+      type: 'text',
+      name,
+      defaultValue: rawRest,
+      options: [],
+      isRequired,
+      macroName: ''
+    };
+  }
+
+  // Standard text variable without default
+  return {
+    type: 'text',
+    name: inner.trim(),
+    defaultValue: '',
+    options: [],
+    isRequired,
+    macroName: ''
+  };
+};
+
+/**
+ * Serializes a variable configuration object into its syntax string representation (e.g. "{{!Topic: AI}}").
+ */
+export const serializeVariableTag = ({ type = 'text', name = '', defaultValue = '', options = [], isRequired = false, macroName = '' } = {}) => {
+  const cleanName = (name || '').trim();
+
+  if (type === 'macro') {
+    const cleanMacro = (macroName || cleanName || '$date').trim();
+    const macroWithDollar = cleanMacro.startsWith('$') ? cleanMacro : `$${cleanMacro}`;
+    return `{{${macroWithDollar}}}`;
+  }
+
+  const reqPrefix = isRequired ? '!' : '';
+
+  if (type === 'file') {
+    const fileLabel = cleanName || 'Document';
+    return `{{${reqPrefix}file: ${fileLabel}}}`;
+  }
+
+  if (type === 'dropdown') {
+    const varName = cleanName || 'Option';
+    const cleanOptions = (options || []).map(o => String(o).trim()).filter(Boolean);
+    const optsStr = cleanOptions.length > 0 ? cleanOptions.join(' | ') : 'Option 1 | Option 2';
+    return `{{${reqPrefix}${varName}: ${optsStr}}}`;
+  }
+
+  // Standard text variable
+  const varName = cleanName || 'Variable';
+  const cleanDefault = (defaultValue || '').trim();
+  if (cleanDefault) {
+    return `{{${reqPrefix}${varName}: ${cleanDefault}}}`;
+  }
+
+  return `{{${reqPrefix}${varName}}}`;
+};

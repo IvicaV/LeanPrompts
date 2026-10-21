@@ -37,7 +37,8 @@ import { getLlmConfig, getInjectionTooltip } from '../../utils/llmConstants';
 import { triggerInjection } from '../../utils/injectionAPI';
 import Rating from '../../components/Rating';
 import PromptEditor from '../../components/PromptEditor';
-import { parseVariables, compilePrompt, resolveSnippets } from '../../utils/variableParser';
+import { parseVariables, compilePrompt, resolveSnippets, parseVariableTag } from '../../utils/variableParser';
+import VariableHelperModal from '../../components/VariableHelperModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import BulkActionBar from '../../components/BulkActionBar';
 import TagEditorPopover from '../../components/TagEditorPopover';
@@ -179,6 +180,37 @@ export default function SnippetLibrary({
         if (activeMenuId) window.addEventListener('click', closeMenu);
         return () => window.removeEventListener('click', closeMenu);
     }, [activeMenuId]);
+
+    // --- VARIABLE HELPER MODAL STATE ---
+    const [varModalState, setVarModalState] = useState({
+        isOpen: false,
+        mode: 'create',
+        initialConfig: null,
+        initialText: '',
+        targetRange: null
+    });
+
+    useEffect(() => {
+        const handleOpenHelper = (e) => {
+            const { mode, raw, from, to, config, initialText } = e.detail || {};
+            setVarModalState({
+                isOpen: true,
+                mode: mode || 'create',
+                initialConfig: config || (raw ? parseVariableTag(raw) : null),
+                initialText: initialText || '',
+                targetRange: typeof from === 'number' && typeof to === 'number' ? { from, to } : null
+            });
+        };
+        window.addEventListener('lp-open-variable-helper', handleOpenHelper);
+        return () => window.removeEventListener('lp-open-variable-helper', handleOpenHelper);
+    }, []);
+
+    const handleApplyVariable = ({ syntax, mode, from, to }) => {
+        window.dispatchEvent(new CustomEvent('lp-apply-variable-syntax', {
+            detail: { syntax, mode, from, to }
+        }));
+    };
+    // --- END VARIABLE HELPER MODAL STATE ---
     const [selectedIds, setSelectedIds] = useState([]);
     const [showSort, setShowSort] = useState(false);
     const [showCollectionMenu, setShowCollectionMenu] = useState(false); // Track editor header dropdown
@@ -1575,6 +1607,24 @@ export default function SnippetLibrary({
                             <header className="h-14 border-b border-border bg-bg-surface shrink-0 flex items-center justify-between px-6 gap-4">
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                     <span className="text-snippet-accent dark:text-amber-400 font-mono text-lg font-bold select-none">@</span>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const selectedText = window.getSelection()?.toString()?.trim() || "";
+                                            setVarModalState({
+                                                isOpen: true,
+                                                mode: 'create',
+                                                initialConfig: null,
+                                                initialText: selectedText,
+                                                targetRange: null
+                                            });
+                                        }}
+                                        className="flex items-center justify-center w-6 h-6 rounded-md bg-bg-surface hover:bg-primary/10 text-text-muted hover:text-primary border border-border/40 hover:border-primary/30 transition-all shrink-0 shadow-sm"
+                                        title="Insert Variable (Open Variable Helper)"
+                                    >
+                                        <Plus size={13} strokeWidth={2.5} />
+                                    </button>
                                     <input
                                         ref={nameInputRef}
                                         value={editName}
@@ -2410,6 +2460,15 @@ export default function SnippetLibrary({
                 </div>
             </div>
 
+            <VariableHelperModal
+                isOpen={varModalState.isOpen}
+                onClose={() => setVarModalState(prev => ({ ...prev, isOpen: false }))}
+                mode={varModalState.mode}
+                initialConfig={varModalState.initialConfig}
+                initialText={varModalState.initialText}
+                targetRange={varModalState.targetRange}
+                onApply={handleApplyVariable}
+            />
         </div >
     );
 }
