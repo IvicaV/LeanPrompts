@@ -20,7 +20,7 @@
  * ============================================================================
  */
 import React, { useMemo, useState, useEffect } from 'react';
-import { resolveSnippets, getIgnoredRanges, parseVariableTag } from '../utils/variableParser';
+import { resolveSnippets, getIgnoredRanges } from '../utils/variableParser';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { html } from '@codemirror/lang-html';
@@ -589,53 +589,6 @@ const locatorPlugin = ViewPlugin.fromClass(class {
 });
 
 /**
- * Variable Plugin
- * Listens for variable insertion or editing events from VariableHelperModal.
- * 100% React-State isolated to prevent unnecessary re-renders.
- */
-const variablePlugin = ViewPlugin.fromClass(class {
-  constructor(view) {
-    this.view = view;
-    this.handleApply = this.handleApply.bind(this);
-    window.addEventListener('lp-apply-variable-syntax', this.handleApply);
-  }
-  destroy() {
-    window.removeEventListener('lp-apply-variable-syntax', this.handleApply);
-  }
-  handleApply(e) {
-    try {
-      // 1. ACTIVE STEP GUARD: Ignore if this editor is inactive / locked
-      const isLocked = !!this.view.dom.closest('.step-scroll-locked');
-      if (isLocked) return;
-
-      const { mode, syntax, from, to } = e.detail || {};
-      if (!syntax) return;
-
-      if (mode === 'edit' && typeof from === 'number' && typeof to === 'number') {
-        const docLen = this.view.state.doc.length;
-        const safeFrom = Math.max(0, Math.min(from, docLen));
-        const safeTo = Math.max(safeFrom, Math.min(to, docLen));
-        this.view.dispatch({
-          changes: { from: safeFrom, to: safeTo, insert: syntax },
-          selection: { anchor: safeFrom + syntax.length }
-        });
-        if (!this.view.hasFocus) this.view.focus();
-      } else {
-        // mode === 'create'
-        const { from: selFrom, to: selTo } = this.view.state.selection.main;
-        this.view.dispatch({
-          changes: { from: selFrom, to: selTo, insert: syntax },
-          selection: { anchor: selFrom + syntax.length }
-        });
-        if (!this.view.hasFocus) this.view.focus();
-      }
-    } catch (err) {
-      console.warn("Could not apply variable syntax:", err);
-    }
-  }
-});
-
-/**
  * THEME OVERRIDE
  */
 const promptTheme = EditorView.theme({
@@ -1060,7 +1013,6 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
     Prec.highest(promptIDEPlugin),
     Prec.highest(interactionExtension),
     Prec.highest(locatorPlugin),
-    Prec.highest(variablePlugin),
     Prec.highest(autocompletion({
       override: [snippetCompletions, variableCompletions, slashCompletions],
       activateOnTyping: true
@@ -1074,107 +1026,36 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
       // [PROTECTED: ZERO-REGRESSION PERFORMANCE OPTIMIZATION]
       // DO NOT REMOVE OR ALTER WITHOUT EXPLICIT USER CONSENT.
       // Includes check is incredibly fast natively. Prevents running expensive regex
-      // on every micro-movement of the mouse when no snippet or variable exists.
+      // on every micro-movement of the mouse when no snippet exists on the line.
       // =========================================================================
-      const hasSnippet = text.includes('@');
-      const hasVariable = text.includes('{{');
-      if (!hasSnippet && !hasVariable) return null;
+      if (!text.includes('@')) return null;
 
       // Match @name or @{name with spaces}
-      if (hasSnippet) {
-        const snipRegex = /(?<![a-zA-Z0-9_.+\-])(?:@[\w-]+(?:\.[\w-]+)*|@\{[^}]+\})/g;
-        let match;
-        while ((match = snipRegex.exec(text)) !== null) {
-          if (relPos >= match.index && relPos < match.index + match[0].length) {
-            const raw = match[0];
-            const nameMatch = /^@(?:\{([^{}]+)\}|([\w-]+(?:\.[\w-]+)*))/.exec(raw);
-            const snipName = nameMatch ? (nameMatch[1] || nameMatch[2]) : raw.substring(1);
-            const found = snippets.find(s => s.name === snipName);
+      const snipRegex = /(?<![a-zA-Z0-9_.+\-])(?:@[\w-]+(?:\.[\w-]+)*|@\{[^}]+\})/g;
 
-            if (!found) return null;
+      let match;
+      while ((match = snipRegex.exec(text)) !== null) {
+        if (relPos >= match.index && relPos < match.index + match[0].length) {
+          const raw = match[0];
+          const nameMatch = /^@(?:\{([^{}]+)\}|([\w-]+(?:\.[\w-]+)*))/.exec(raw);
+          const snipName = nameMatch ? (nameMatch[1] || nameMatch[2]) : raw.substring(1);
+          const found = snippets.find(s => s.name === snipName);
 
-            return {
-              pos: line.from + match.index,
-              end: line.from + match.index + match[0].length,
-              above: true,
-              create() {
-                let dom = document.createElement("div");
-                dom.className = "cm-snippet-tooltip animate-in fade-in zoom-in duration-200";
-                dom.textContent = found.content.length > 500 ? found.content.substring(0, 500) + "..." : found.content;
-                return { dom };
-              }
-            };
-          }
+          if (!found) return null;
+
+          return {
+            pos: line.from + match.index,
+            end: line.from + match.index + match[0].length,
+            above: true,
+            create() {
+              let dom = document.createElement("div");
+              dom.className = "cm-snippet-tooltip animate-in fade-in zoom-in duration-200";
+              dom.textContent = found.content.length > 500 ? found.content.substring(0, 500) + "..." : found.content;
+              return { dom };
+            }
+          };
         }
       }
-
-      // Match {{Variable}} for Variante C (Hover Tooltip with Edit button)
-      if (hasVariable) {
-        const varRegex = /\{\{([\s\S]+?)\}\}/g;
-        let vMatch;
-        while ((vMatch = varRegex.exec(text)) !== null) {
-          if (relPos >= vMatch.index && relPos < vMatch.index + vMatch[0].length) {
-            const raw = vMatch[0];
-            const config = parseVariableTag(raw);
-            const from = line.from + vMatch.index;
-            const to = line.from + vMatch.index + vMatch[0].length;
-
-            return {
-              pos: from,
-              end: to,
-              above: true,
-              create() {
-                const dom = document.createElement("div");
-                dom.className = "cm-variable-hover-tooltip flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-bg-surface/95 backdrop-blur-md border border-border/60 shadow-xl text-xs text-text-main select-none animate-in fade-in zoom-in-95 duration-150";
-
-                let badgeBg = "bg-primary/10 text-primary border-primary/20";
-                let typeLabel = "TEXT";
-                if (config.type === 'file') {
-                  badgeBg = "bg-indigo-500/10 text-indigo-400 border-indigo-500/20";
-                  typeLabel = "FILE";
-                } else if (config.type === 'dropdown') {
-                  badgeBg = "bg-amber-500/10 text-amber-500 border-amber-500/20";
-                  typeLabel = "DROPDOWN";
-                } else if (config.type === 'macro') {
-                  badgeBg = "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
-                  typeLabel = "MACRO";
-                }
-
-                const badge = document.createElement("span");
-                badge.className = `text-[9px] font-bold px-1.5 py-0.5 rounded border tracking-wider ${badgeBg}`;
-                badge.textContent = config.isRequired ? `!${typeLabel}` : typeLabel;
-                dom.appendChild(badge);
-
-                const nameSpan = document.createElement("span");
-                nameSpan.className = "font-mono font-bold text-text-main text-[11px] max-w-[130px] truncate";
-                nameSpan.textContent = config.name || config.macroName || "Variable";
-                dom.appendChild(nameSpan);
-
-                const editBtn = document.createElement("button");
-                editBtn.className = "flex items-center gap-1 ml-1 px-2 py-0.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-bold transition-all cursor-pointer";
-                editBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg> Edit`;
-                editBtn.onclick = (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  window.dispatchEvent(new CustomEvent('lp-open-variable-helper', {
-                    detail: {
-                      mode: 'edit',
-                      raw,
-                      from,
-                      to,
-                      config
-                    }
-                  }));
-                };
-                dom.appendChild(editBtn);
-
-                return { dom };
-              }
-            };
-          }
-        }
-      }
-
       return null;
     }),
     leanBaseTheme,
