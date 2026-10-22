@@ -124,68 +124,71 @@ export default function VariableHelperModal({
     };
 
     return createPortal(
-        <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-[10vh] md:pt-[12vh] pointer-events-none">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 pointer-events-none overflow-y-auto">
             {/* Backdrop */}
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
 
             {/* Modal Card */}
-            <div className="modal-glass-panel w-full max-w-[480px] pointer-events-auto rounded-[28px] p-6 shadow-2xl relative border border-border/80 dark:border-white/10 bg-bg-surface dark:bg-[#131316] text-left">
+            <div className="modal-glass-panel w-full max-w-[480px] max-h-[calc(100vh-2rem)] flex flex-col pointer-events-auto rounded-[28px] p-5 sm:p-6 shadow-2xl relative border border-border/80 dark:border-white/10 bg-bg-surface dark:bg-[#131316] text-left overflow-hidden">
                 
-                {/* Deko-Handle */}
-                <div className="w-12 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-full mx-auto mb-6 opacity-50" />
+                {/* Fixed Top Section: Handle, Header & Tabs */}
+                <div className="shrink-0">
+                    {/* Deko-Handle */}
+                    <div className="w-12 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-full mx-auto mb-4 opacity-50" />
 
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary-subtle flex items-center justify-center text-primary shrink-0">
-                            <Sparkles size={20} />
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-primary-subtle flex items-center justify-center text-primary shrink-0">
+                                <Sparkles size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-text-main leading-none">
+                                    {mode === 'edit' ? 'Edit Variable' : 'Insert Variable'}
+                                </h3>
+                                <p className="text-xs text-text-muted mt-1">
+                                    {mode === 'edit'
+                                        ? 'Update variable configuration'
+                                        : (hasActiveCursor ? 'Adds a dynamic placeholder at your cursor position' : 'Appends a dynamic placeholder to your prompt')}
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-text-main leading-none">
-                                {mode === 'edit' ? 'Edit Variable' : 'Insert Variable'}
-                            </h3>
-                            <p className="text-xs text-text-muted mt-1">
-                                {mode === 'edit'
-                                    ? 'Update variable configuration'
-                                    : (hasActiveCursor ? 'Adds a dynamic placeholder at your cursor position' : 'Appends a dynamic placeholder to your prompt')}
-                            </p>
-                        </div>
+                        <button onClick={onClose} className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 transition-colors" title="Close">
+                            <X size={18} />
+                        </button>
                     </div>
-                    <button onClick={onClose} className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 transition-colors" title="Close">
-                        <X size={18} />
-                    </button>
+
+                    {/* Tabs */}
+                    <div className="grid grid-cols-4 gap-2 mb-4">
+                        {[
+                            { id: 'text', label: 'Text', icon: Type },
+                            { id: 'dropdown', label: 'Dropdown', icon: ListFilter },
+                            { id: 'file', label: 'File Zone', icon: FolderUp },
+                            { id: 'macro', label: 'System', icon: Zap }
+                        ].map(tab => {
+                            const Icon = tab.icon;
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`py-2 px-1 rounded-xl text-xs font-semibold border-2 transition-all flex items-center justify-center gap-2 ${
+                                        isActive
+                                            ? 'border-primary bg-primary/5 text-primary'
+                                            : 'border-transparent bg-zinc-100 dark:bg-zinc-800/50 text-text-muted hover:bg-zinc-200/60 dark:hover:bg-zinc-800'
+                                    }`}
+                                >
+                                    <Icon size={14} />
+                                    <span>{tab.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
 
-                {/* Tabs */}
-                <div className="grid grid-cols-4 gap-2 mb-6">
-                    {[
-                        { id: 'text', label: 'Text', icon: Type },
-                        { id: 'dropdown', label: 'Dropdown', icon: ListFilter },
-                        { id: 'file', label: 'File Zone', icon: FolderUp },
-                        { id: 'macro', label: 'System', icon: Zap }
-                    ].map(tab => {
-                        const Icon = tab.icon;
-                        const isActive = activeTab === tab.id;
-                        return (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`py-2 px-1 rounded-xl text-xs font-semibold border-2 transition-all flex items-center justify-center gap-2 ${
-                                    isActive
-                                        ? 'border-primary bg-primary/5 text-primary'
-                                        : 'border-transparent bg-zinc-100 dark:bg-zinc-800/50 text-text-muted hover:bg-zinc-200/60 dark:hover:bg-zinc-800'
-                                }`}
-                            >
-                                <Icon size={14} />
-                                <span>{tab.label}</span>
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* Content */}
-                <div className="space-y-4">
+                {/* Scrollable Middle Content */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-4">
                     {activeTab !== 'macro' && (
                         <div>
                             <label className="block text-xs font-bold text-text-main mb-1.5">
@@ -347,8 +350,8 @@ export default function VariableHelperModal({
                     )}
                 </div>
 
-                {/* Preview & Action */}
-                <div className="mt-6 pt-4 border-t border-border/50 flex flex-col gap-3">
+                {/* Fixed Bottom Section: Preview & Action */}
+                <div className="mt-4 pt-3.5 border-t border-zinc-200 dark:border-zinc-800 flex flex-col gap-2.5 shrink-0">
                     <div className="p-3 rounded-xl bg-zinc-100 dark:bg-zinc-800/60 border border-border flex items-center justify-between">
                         <div className="flex items-center gap-2 min-w-0">
                             <span className="text-xs font-semibold text-text-muted">Preview:</span>
