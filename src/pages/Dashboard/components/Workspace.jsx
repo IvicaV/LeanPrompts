@@ -38,6 +38,7 @@ import useModifierKeys from '../../../hooks/useModifierKeys';
 import { ExternalLink } from 'lucide-react';
 import { LlmInjectLabel, LlmIconButton } from '../../../components/llm/LlmInjectBar';
 import ToolbarButton from '../../../components/ToolbarButton';
+import VariableHelperModal from '../../../components/VariableHelperModal';
 
 
 /**
@@ -78,6 +79,21 @@ export default function Workspace({
     // --- STEP CONTEXT MENU STATE ---
     const [activeStepMenuId, setActiveStepMenuId] = React.useState(null);
     const [stepMenuPopupPos, setStepMenuPopupPos] = React.useState({ top: 0, left: 0 });
+
+    // --- VARIABLE HELPER MODAL STATE ---
+    const [isVariableHelperOpen, setIsVariableHelperOpen] = React.useState(false);
+    const [variableHelperData, setVariableHelperData] = React.useState({ mode: 'create', stepId: null });
+
+    React.useEffect(() => {
+        const handleOpenHelper = (e) => {
+            if (e.detail) {
+                setVariableHelperData(e.detail);
+                setIsVariableHelperOpen(true);
+            }
+        };
+        window.addEventListener('lp-open-variable-helper', handleOpenHelper);
+        return () => window.removeEventListener('lp-open-variable-helper', handleOpenHelper);
+    }, []);
 
     React.useEffect(() => {
         const closeMenu = () => setActiveStepMenuId(null);
@@ -908,9 +924,8 @@ export default function Workspace({
                                         onDoubleClick={(e) => e.stopPropagation()} // Protection for buttons
                                         onClick={(e) => e.stopPropagation()}
                                     >
-
                                         {isStepActive && !isOnlyStep && (
-                                            <div className="flex items-center gap-1 mr-2 bg-bg-elevated rounded p-0.5 border border-border shadow-sm">
+                                            <div className="flex items-center gap-1 bg-bg-elevated rounded p-0.5 border border-border shadow-sm">
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); onMoveStep(activePrompt.id, step.id, 'up'); }}
                                                     disabled={index === 0}
@@ -928,6 +943,27 @@ export default function Workspace({
                                                     <ArrowDown size={12} />
                                                 </button>
                                             </div>
+                                        )}
+
+                                        {isStepActive && !isOnlyStep && (
+                                            <div className="h-4 w-px bg-border/60" />
+                                        )}
+
+                                        {isStepActive && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setVariableHelperData({
+                                                        mode: 'create',
+                                                        stepId: step.id
+                                                    });
+                                                    setIsVariableHelperOpen(true);
+                                                }}
+                                                className="p-1.5 rounded-md text-xs text-text-muted hover:text-primary hover:bg-bg-hover transition-all flex items-center gap-1"
+                                                title="Insert Variable at cursor"
+                                            >
+                                                <Plus size={14} />
+                                            </button>
                                         )}
 
                                         <button
@@ -1436,6 +1472,13 @@ export default function Workspace({
                 </AnimatePresence>,
                 document.body
             )}
+
+            <VariableHelperModal
+                isOpen={isVariableHelperOpen}
+                onClose={() => setIsVariableHelperOpen(false)}
+                mode={variableHelperData?.mode || 'create'}
+                initialData={variableHelperData}
+            />
         </div>
     );
 }

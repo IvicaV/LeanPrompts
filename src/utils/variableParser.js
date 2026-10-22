@@ -562,3 +562,71 @@ export const normalizeMarkdownTables = (text) => {
 
   return normalized;
 };
+
+/**
+ * Parst eine Variable in ihre semantischen Bestandteile
+ */
+export function parseVariableDefinition(rawStr) {
+  if (!rawStr) return { type: 'text', name: '', isRequired: false };
+  let str = rawStr.trim();
+  if (str.startsWith('{{') && str.endsWith('}}')) {
+    str = str.slice(2, -2).trim();
+  }
+
+  // 1. Required Check
+  const isRequired = str.startsWith('!');
+  if (isRequired) str = str.slice(1).trim();
+
+  // 2. Macro Check
+  if (str.startsWith('$')) {
+    return { type: 'macro', name: str, isRequired: false, macro: str };
+  }
+
+  // 3. File Check
+  if (str.toLowerCase().startsWith('file:')) {
+    return { type: 'file', name: str.slice(5).trim(), isRequired };
+  }
+
+  // 4. Dropdown Check (enthält Pipe)
+  const colonIdx = str.indexOf(':');
+  if (colonIdx !== -1) {
+    const name = str.slice(0, colonIdx).trim();
+    const rest = str.slice(colonIdx + 1).trim();
+    if (rest.includes('|')) {
+      const options = rest.split('|').map(o => o.trim()).filter(Boolean);
+      return { type: 'dropdown', name, options, isRequired };
+    } else {
+      return { type: 'text', name, defaultValue: rest, isRequired };
+    }
+  }
+
+  // 5. Standard Text
+  return { type: 'text', name: str, isRequired };
+}
+
+/**
+ * Baut aus den Formular-Werten die fehlerfreie LeanPrompts-Syntax zusammen
+ */
+export function buildVariableDefinition({ type, name, defaultValue, options, isRequired, macro, includePrefix = false }) {
+  const cleanName = (name || '').trim();
+  const req = isRequired ? '!' : '';
+  let syntax = '';
+
+  if (type === 'macro') {
+    syntax = `{{${macro || cleanName || '$date'}}}`;
+  } else if (type === 'file') {
+    syntax = `{{${req}file:${cleanName || 'Document'}}}`;
+  } else if (type === 'dropdown') {
+    const validOpts = (options || []).map(o => o.trim()).filter(Boolean);
+    const optsStr = validOpts.length > 0 ? `:${validOpts.join('|')}` : '';
+    syntax = `{{${req}${cleanName || 'Choice'}${optsStr}}}`;
+  } else {
+    const defaultStr = defaultValue && defaultValue.trim() ? `:${defaultValue.trim()}` : '';
+    syntax = `{{${req}${cleanName || 'Topic'}${defaultStr}}}`;
+  }
+
+  if (includePrefix && cleanName && type !== 'macro') {
+    return `${cleanName}: ${syntax}`;
+  }
+  return syntax;
+}

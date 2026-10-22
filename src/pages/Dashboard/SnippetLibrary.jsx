@@ -55,6 +55,7 @@ import useModifierKeys from '../../hooks/useModifierKeys';
 import { ExternalLink } from 'lucide-react';
 import { LlmInjectLabel, LlmIconButton } from '../../components/llm/LlmInjectBar';
 import ToolbarButton from '../../components/ToolbarButton';
+import VariableHelperModal from '../../components/VariableHelperModal';
 
 
 export default function SnippetLibrary({
@@ -129,6 +130,21 @@ export default function SnippetLibrary({
     } = usePromptStore();
 
     const activeCollection = collections.find(c => c.id === activeCollectionId);
+
+    // --- VARIABLE HELPER MODAL STATE ---
+    const [isVariableHelperOpen, setIsVariableHelperOpen] = useState(false);
+    const [variableHelperData, setVariableHelperData] = useState({ mode: 'create', stepId: null });
+
+    useEffect(() => {
+        const handleOpenHelper = (e) => {
+            if (e.detail) {
+                setVariableHelperData(e.detail);
+                setIsVariableHelperOpen(true);
+            }
+        };
+        window.addEventListener('lp-open-variable-helper', handleOpenHelper);
+        return () => window.removeEventListener('lp-open-variable-helper', handleOpenHelper);
+    }, []);
 
     // --- START: SNIPPET LLM SCROLL LOGIC ---
     const [snippetLlmScroll, setSnippetLlmScroll] = React.useState({ left: false, right: false });
@@ -1610,6 +1626,21 @@ export default function SnippetLibrary({
                                     </div>
 
                                     <ToolbarButton
+                                        variant="ghost"
+                                        onClick={() => {
+                                            setVariableHelperData({
+                                                mode: 'create',
+                                                stepId: null
+                                            });
+                                            setIsVariableHelperOpen(true);
+                                        }}
+                                        title="Insert Variable at cursor"
+                                        className="group hover:text-primary hover:bg-primary/5"
+                                    >
+                                        <Plus size={18} className="group-hover:scale-110 transition-transform" />
+                                    </ToolbarButton>
+
+                                    <ToolbarButton
                                         variant="elevated"
                                         isActive={isPreviewMode}
                                         onClick={() => setIsPreviewMode(!isPreviewMode)}
@@ -2410,6 +2441,12 @@ export default function SnippetLibrary({
                 </div>
             </div>
 
+            <VariableHelperModal
+                isOpen={isVariableHelperOpen}
+                onClose={() => setIsVariableHelperOpen(false)}
+                mode={variableHelperData?.mode || 'create'}
+                initialData={variableHelperData}
+            />
         </div >
     );
 }

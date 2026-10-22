@@ -661,6 +661,54 @@ const promptTheme = EditorView.theme({
     padding: "0.1em 0.3em !important",
     borderRadius: "3px !important",
     fontSize: "0.9em !important"
+  },
+  ".cm-tooltip:has(.cm-variable-edit-btn)": {
+    border: "none !important",
+    backgroundColor: "transparent !important",
+    boxShadow: "none !important"
+  }
+});
+
+/**
+ * PLUGIN: Applies variable syntax from VariableHelperModal
+ * Decoupled via window CustomEvent to avoid React re-render cascades.
+ */
+const variableHelperApplyPlugin = ViewPlugin.fromClass(class {
+  constructor(view) {
+    this.view = view;
+    this.handleApply = (e) => {
+      const { syntax, range, stepId } = e.detail || {};
+      if (!syntax) return;
+
+      const stepContainer = this.view.dom.closest('[data-step-id]');
+      const myStepId = stepContainer ? stepContainer.getAttribute('data-step-id') : null;
+
+      if (stepId) {
+        if (myStepId !== stepId) return;
+      } else {
+        if (myStepId) return;
+      }
+
+      if (range && typeof range.from === 'number' && typeof range.to === 'number') {
+        this.view.dispatch({
+          changes: { from: range.from, to: range.to, insert: syntax },
+          selection: { anchor: range.from + syntax.length }
+        });
+      } else {
+        const sel = this.view.state.selection.main;
+        this.view.dispatch({
+          changes: { from: sel.from, to: sel.to, insert: syntax },
+          selection: { anchor: sel.from + syntax.length }
+        });
+      }
+      this.view.focus();
+    };
+
+    window.addEventListener('lp-apply-variable-syntax', this.handleApply);
+  }
+
+  destroy() {
+    window.removeEventListener('lp-apply-variable-syntax', this.handleApply);
   }
 });
 
@@ -1017,17 +1065,65 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
       override: [snippetCompletions, variableCompletions, slashCompletions],
       activateOnTyping: true
     })),
+    variableHelperApplyPlugin,
     hoverTooltip((view, pos) => {
       const line = view.state.doc.lineAt(pos);
       const text = line.text;
       const relPos = pos - line.from;
       
-      // =========================================================================
-      // [PROTECTED: ZERO-REGRESSION PERFORMANCE OPTIMIZATION]
-      // DO NOT REMOVE OR ALTER WITHOUT EXPLICIT USER CONSENT.
-      // Includes check is incredibly fast natively. Prevents running expensive regex
-      // on every micro-movement of the mouse when no snippet exists on the line.
-      // =========================================================================
+      // Fast check: neither snippet nor variable on line
+      if (!text.includes('@') && !text.includes('{{')) return null;
+
+      // 1. Variable Hover Check
+      if (text.includes('{{')) {
+        const varRegex = /\{\{[^{}]+?\}\}/g;
+        let vMatch;
+        while ((vMatch = varRegex.exec(text)) !== null) {
+          if (relPos >= vMatch.index && relPos < vMatch.index + vMatch[0].length) {
+            const raw = vMatch[0];
+            const from = line.from + vMatch.index;
+            const to = line.from + vMatch.index + vMatch[0].length;
+
+            // Check if there is an existing label prefix before this variable, e.g. "Topic: {{Topic}}"
+            const textBefore = text.slice(0, vMatch.index);
+            const prefixMatch = textBefore.match(/([\w\säöüÄÖÜß-]+):\s*$/);
+            const hasExistingPrefix = !!prefixMatch;
+            const prefixLength = prefixMatch ? prefixMatch[0].length : 0;
+            const fullFrom = hasExistingPrefix ? from - prefixLength : from;
+
+            return {
+              pos: pos,
+              end: to,
+              above: true,
+              create() {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "cm-variable-edit-btn group relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-bg-elevated text-text-main border border-border shadow-lg shadow-black/30 dark:shadow-black/60 hover:border-primary/50 hover:bg-bg-hover hover:scale-[1.02] active:scale-[0.98] transition-all duration-150 cursor-pointer select-none after:content-[''] after:absolute after:bottom-[-8px] after:left-[-4px] after:right-[-4px] after:h-[8px] after:bg-transparent";
+                btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-primary transition-transform group-hover:scale-110"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg><span class="text-[11px] font-bold text-text-main group-hover:text-primary transition-colors">Edit</span>`;
+                btn.onclick = (e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  const stepContainer = view.dom.closest('[data-step-id]');
+                  const stepId = stepContainer ? stepContainer.getAttribute('data-step-id') : null;
+                  window.dispatchEvent(new CustomEvent('lp-open-variable-helper', {
+                    detail: {
+                      mode: 'edit',
+                      raw,
+                      range: { from, to },
+                      fullRange: { from: fullFrom, to },
+                      hasExistingPrefix,
+                      stepId
+                    }
+                  }));
+                };
+                return { dom: btn };
+              }
+            };
+          }
+        }
+      }
+
+      // 2. Snippet Hover Check
       if (!text.includes('@')) return null;
 
       // Match @name or @{name with spaces}
