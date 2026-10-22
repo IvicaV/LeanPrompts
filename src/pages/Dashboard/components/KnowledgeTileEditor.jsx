@@ -1335,13 +1335,13 @@ export default function KnowledgeTileEditor({
                         <div className="bg-bg-surface/30 border-t border-border py-1 px-3 text-[10px] text-text-faint flex justify-between items-center shrink-0 select-none">
                             {/* Anfänger-Hilfe (Links) */}
                             <span className="flex items-center gap-1.5 opacity-70 hover:opacity-100 transition-opacity truncate pr-4">
-                                Tip: Use <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">{"{{var}}"}</code> for inputs, <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">{"{{file: doc}}"}</code> for attachments, <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">@</code> for Snippets, and <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">#</code> for Prompts.
+                                Tip: Use <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">@</code> for Snippets, <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">#</code> for Prompts, <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">&gt;</code> for Callouts, and <code className="bg-bg-elevated border border-border px-1 rounded font-mono tracking-tight text-text-muted">%%</code> for Comments.
                             </span>
 
                             {/* Power-User Cheat-Sheet (Rechts) */}
                             <div
                                 className="flex items-center gap-1 opacity-50 hover:opacity-100 hover:text-text-main transition-colors cursor-help shrink-0"
-                                title={"ADVANCED SYNTAX:\n• Required: {{!Variable}}\n• Dropdowns: {{Variable: Option 1 | Option 2}}\n• System Macros: {{$date}}, {{$time}}, {{$day}}, {{$uuid}}, {{$language}}\n• Hidden Comments: %% Your note %%"}
+                                title={"KNOWLEDGE BASE SYNTAX:\n• Link Prompts: # or [[Prompt Title]]\n• Link Snippets: @SnippetName\n• Callout / Infobox: > Your note\n• Hidden Comments: %% Private note %%\n• Task Lists: - [ ] To-Do, - [x] Done\n• Code Blocks: ```language\n• Images with Width: ![Alt=300px](url)"}
                             >
                                 <HelpCircle size={12} />
                                 <span>Advanced</span>

@@ -134,6 +134,11 @@ export default function SnippetLibrary({
     // --- VARIABLE HELPER MODAL STATE ---
     const [isVariableHelperOpen, setIsVariableHelperOpen] = useState(false);
     const [variableHelperData, setVariableHelperData] = useState({ mode: 'create', stepId: null });
+    const [isEditorFocused, setIsEditorFocused] = useState(false);
+
+    useEffect(() => {
+        setIsEditorFocused(false);
+    }, [activeSnippetId]);
 
     useEffect(() => {
         const handleOpenHelper = (e) => {
@@ -1625,20 +1630,26 @@ export default function SnippetLibrary({
                                         )}
                                     </div>
 
-                                    <ToolbarButton
-                                        variant="ghost"
-                                        onClick={() => {
-                                            setVariableHelperData({
-                                                mode: 'create',
-                                                stepId: null
-                                            });
-                                            setIsVariableHelperOpen(true);
-                                        }}
-                                        title="Insert Variable at cursor"
-                                        className="group hover:text-primary hover:bg-primary/5"
-                                    >
-                                        <Plus size={18} className="group-hover:scale-110 transition-transform" />
-                                    </ToolbarButton>
+                                    {!isPreviewMode && (isEditorFocused || isVariableHelperOpen) && (
+                                        <ToolbarButton
+                                            variant="ghost"
+                                            onMouseDown={(e) => {
+                                                // Prevent stealing focus from CodeMirror so cursor position remains intact
+                                                e.preventDefault();
+                                            }}
+                                            onClick={() => {
+                                                setVariableHelperData({
+                                                    mode: 'create',
+                                                    stepId: null
+                                                });
+                                                setIsVariableHelperOpen(true);
+                                            }}
+                                            title="Insert Variable at cursor"
+                                            className="group hover:text-primary hover:bg-primary/5 animate-in fade-in zoom-in-95 duration-150"
+                                        >
+                                            <Plus size={18} className="group-hover:scale-110 transition-transform" />
+                                        </ToolbarButton>
+                                    )}
 
                                     <ToolbarButton
                                         variant="elevated"
@@ -1885,7 +1896,15 @@ export default function SnippetLibrary({
                                 </div>
                             </div>
 
-                            <div className="flex-1 flex flex-col overflow-hidden bg-bg">
+                            <div 
+                                className="flex-1 flex flex-col overflow-hidden bg-bg"
+                                onFocus={() => setIsEditorFocused(true)}
+                                onBlur={(e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget)) {
+                                        setIsEditorFocused(false);
+                                    }
+                                }}
+                            >
                                 {isPreviewMode ? (
                                     <div className="flex-1 w-full p-4 overflow-y-auto custom-scrollbar bg-bg-surface">
                                         <div className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-text-main">

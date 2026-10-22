@@ -39,6 +39,7 @@ import { ExternalLink } from 'lucide-react';
 import { LlmInjectLabel, LlmIconButton } from '../../../components/llm/LlmInjectBar';
 import ToolbarButton from '../../../components/ToolbarButton';
 import VariableHelperModal from '../../../components/VariableHelperModal';
+import VariableHelperCallout from '../../../components/VariableHelperCallout';
 
 
 /**
@@ -83,6 +84,7 @@ export default function Workspace({
     // --- VARIABLE HELPER MODAL STATE ---
     const [isVariableHelperOpen, setIsVariableHelperOpen] = React.useState(false);
     const [variableHelperData, setVariableHelperData] = React.useState({ mode: 'create', stepId: null });
+    const [isVariableCalloutVisible, setIsVariableCalloutVisible] = React.useState(false);
 
     React.useEffect(() => {
         const handleOpenHelper = (e) => {
@@ -950,20 +952,29 @@ export default function Workspace({
                                         )}
 
                                         {isStepActive && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setVariableHelperData({
-                                                        mode: 'create',
-                                                        stepId: step.id
-                                                    });
-                                                    setIsVariableHelperOpen(true);
-                                                }}
-                                                className="p-1.5 rounded-md text-xs text-text-muted hover:text-primary hover:bg-bg-hover transition-all flex items-center gap-1"
-                                                title="Insert Variable at cursor"
-                                            >
-                                                <Plus size={14} />
-                                            </button>
+                                            <div className="relative flex items-center">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setVariableHelperData({
+                                                            mode: 'create',
+                                                            stepId: step.id
+                                                        });
+                                                        setIsVariableHelperOpen(true);
+                                                    }}
+                                                    className={`p-1.5 rounded-md text-xs transition-all flex items-center gap-1 ${isVariableCalloutVisible
+                                                        ? 'bg-amber-400/15 text-amber-600 dark:text-amber-400 border border-amber-400/30'
+                                                        : 'text-text-muted hover:text-primary hover:bg-bg-hover'
+                                                        }`}
+                                                    title="Insert Variable at cursor"
+                                                >
+                                                    <Plus size={14} />
+                                                </button>
+
+                                                <VariableHelperCallout
+                                                    onVisibilityChange={setIsVariableCalloutVisible}
+                                                />
+                                            </div>
                                         )}
 
                                         <button
