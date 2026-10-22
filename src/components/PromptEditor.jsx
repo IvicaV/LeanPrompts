@@ -1103,6 +1103,10 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
                 btn.onclick = (e) => {
                   e.stopPropagation();
                   e.preventDefault();
+                  // Dismiss hover tooltip immediately so it does not linger over the modal
+                  btn.closest('.cm-tooltip')?.remove();
+                  document.querySelectorAll('.cm-tooltip:has(.cm-variable-edit-btn)').forEach(el => el.remove());
+
                   const stepContainer = view.dom.closest('[data-step-id]');
                   const stepId = stepContainer ? stepContainer.getAttribute('data-step-id') : null;
                   window.dispatchEvent(new CustomEvent('lp-open-variable-helper', {
