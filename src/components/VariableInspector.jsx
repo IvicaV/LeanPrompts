@@ -102,7 +102,7 @@ function VariableInspector({
             if (!isFileVar && rawContent) {
                 try {
                     const escapedVarName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const regex = new RegExp(`\\{\\{\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
+                    const regex = new RegExp(`\\{\\{\\s*!?\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
                     const match = rawContent.match(regex);
                     if (match && match[1] && match[1].trim()) {
                         rawDefault = match[1].trim();
@@ -854,7 +854,7 @@ function VariableInspector({
                             if (!isFileVar && rawContent) {
                                 try {
                                     const escapedVarName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                    const regex = new RegExp(`\\{\\{\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
+                                    const regex = new RegExp(`\\{\\{\\s*!?\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
                                     const match = rawContent.match(regex);
                                     if (match && match[1] && match[1].trim()) {
                                         rawDefault = match[1].trim();
@@ -1407,7 +1407,7 @@ const getVariableSchema = (variable, rawContent) => {
 
     try {
         const escapedVarName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`\\{\\{\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
+        const regex = new RegExp(`\\{\\{\\s*!?\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
         const match = rawContent.match(regex);
         return match && match[1] ? match[1].trim() : "";
     } catch (e) {

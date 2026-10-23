@@ -690,9 +690,12 @@ const variableHelperApplyPlugin = ViewPlugin.fromClass(class {
       }
 
       if (range && typeof range.from === 'number' && typeof range.to === 'number') {
+        const docLen = this.view.state.doc.length;
+        const safeFrom = Math.max(0, Math.min(range.from, docLen));
+        const safeTo = Math.max(safeFrom, Math.min(range.to, docLen));
         this.view.dispatch({
-          changes: { from: range.from, to: range.to, insert: syntax },
-          selection: { anchor: range.from + syntax.length }
+          changes: { from: safeFrom, to: safeTo, insert: syntax },
+          selection: { anchor: safeFrom + syntax.length }
         });
       } else {
         const sel = this.view.state.selection.main;
@@ -1084,11 +1087,46 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
             const from = line.from + vMatch.index;
             const to = line.from + vMatch.index + vMatch[0].length;
 
-            // Check if there is an existing label prefix before this variable, e.g. "Topic: {{Topic}}"
+            // Extract the variable name from raw, e.g. {{Topic}} or {{!Topic:Default}} or {{file:doc}}
+            let parsedVarName = '';
+            try {
+              const inner = raw.slice(2, -2).trim().replace(/^!/, '');
+              if (inner.toLowerCase().startsWith('file:')) {
+                parsedVarName = inner.slice(5).trim();
+              } else {
+                parsedVarName = inner.split(':')[0].trim();
+              }
+            } catch (_) {}
+
+            // Check if there is an existing label prefix before this variable
             const textBefore = text.slice(0, vMatch.index);
-            const prefixMatch = textBefore.match(/([\w\säöüÄÖÜß-]+):\s*$/);
-            const hasExistingPrefix = !!prefixMatch;
-            const prefixLength = prefixMatch ? prefixMatch[0].length : 0;
+            let hasExistingPrefix = false;
+            let prefixLength = 0;
+
+            if (parsedVarName) {
+              const escapedName = parsedVarName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const exactMatch = textBefore.match(new RegExp(`(?:^|[\\s,;(-])(${escapedName}):\\s*$`, 'i'));
+              if (exactMatch) {
+                const idx = textBefore.lastIndexOf(exactMatch[1]);
+                if (idx !== -1) {
+                  hasExistingPrefix = true;
+                  prefixLength = textBefore.length - idx;
+                }
+              }
+            }
+
+            // Fallback: If line starts with a standalone label like "Topic:" or "- Label:"
+            if (!hasExistingPrefix) {
+              const lineStartMatch = textBefore.match(/^[\s*-]*([\w\säöüÄÖÜß-]+):\s*$/);
+              if (lineStartMatch) {
+                const idx = textBefore.indexOf(lineStartMatch[1]);
+                if (idx !== -1) {
+                  hasExistingPrefix = true;
+                  prefixLength = textBefore.length - idx;
+                }
+              }
+            }
+
             const fullFrom = hasExistingPrefix ? from - prefixLength : from;
 
             return {

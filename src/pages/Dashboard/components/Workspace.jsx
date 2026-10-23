@@ -954,13 +954,18 @@ export default function Workspace({
                                         {isStepActive && (
                                             <div className="relative flex items-center">
                                                 <button
+                                                    onMouseDown={(e) => {
+                                                        // Prevent stealing focus from CodeMirror so cursor position remains intact
+                                                        e.preventDefault();
+                                                    }}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        setVariableHelperData({
-                                                            mode: 'create',
-                                                            stepId: step.id
-                                                        });
-                                                        setIsVariableHelperOpen(true);
+                                                        window.dispatchEvent(new CustomEvent('lp-open-variable-helper', {
+                                                            detail: {
+                                                                mode: 'create',
+                                                                stepId: step.id
+                                                            }
+                                                        }));
                                                     }}
                                                     className={`p-1.5 rounded-md text-xs transition-all flex items-center gap-1 ${isVariableCalloutVisible
                                                         ? 'bg-amber-400/15 text-amber-600 dark:text-amber-400 border border-amber-400/30'

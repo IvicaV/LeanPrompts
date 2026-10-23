@@ -1638,11 +1638,12 @@ export default function SnippetLibrary({
                                                 e.preventDefault();
                                             }}
                                             onClick={() => {
-                                                setVariableHelperData({
-                                                    mode: 'create',
-                                                    stepId: null
-                                                });
-                                                setIsVariableHelperOpen(true);
+                                                window.dispatchEvent(new CustomEvent('lp-open-variable-helper', {
+                                                    detail: {
+                                                        mode: 'create',
+                                                        stepId: null
+                                                    }
+                                                }));
                                             }}
                                             title="Insert Variable at cursor"
                                             className="group hover:text-primary hover:bg-primary/5 animate-in fade-in zoom-in-95 duration-150"

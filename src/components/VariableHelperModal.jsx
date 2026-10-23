@@ -7,7 +7,7 @@
  * @license      AGPL-3.0
  * ============================================================================
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Type, ListFilter, FolderUp, Zap, X, Copy, Check, Sparkles, Trash2, Plus } from 'lucide-react';
 import { copyToClipboard } from '../utils/clipboard';
@@ -55,18 +55,6 @@ export default function VariableHelperModal({
         }
     }, [isOpen, initialData]);
 
-    // Handle ESC key to close
-    useEffect(() => {
-        if (!isOpen) return;
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape') onClose();
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
-
-    if (!isOpen) return null;
-
     // Syntax-Generator
     const cleanName = name.trim();
     const req = isRequired ? '!' : '';
@@ -97,7 +85,7 @@ export default function VariableHelperModal({
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const handleInsert = () => {
+    const handleInsert = useCallback(() => {
         if (!cleanName && activeTab !== 'macro') return;
 
         // If the variable previously had a prefix in the document, replace the entire "Prefix: {{...}}" range
@@ -121,7 +109,24 @@ export default function VariableHelperModal({
         );
 
         onClose();
-    };
+    }, [cleanName, activeTab, initialData, onApply, previewSyntax, onClose]);
+
+    // Handle ESC and Enter keys
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                onClose();
+            } else if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleInsert();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose, handleInsert]);
+
+    if (!isOpen) return null;
 
     return createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 pointer-events-none overflow-y-auto">
@@ -198,7 +203,7 @@ export default function VariableHelperModal({
                                 autoFocus
                                 type="text"
                                 value={name}
-                                onChange={e => setName(e.target.value)}
+                                onChange={e => setName(e.target.value.replace(/[{}:]/g, ''))}
                                 placeholder="e.g. Topic, Audience, Role..."
                                 className="w-full p-3.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-2 border-transparent focus:border-primary text-sm text-text-main outline-none transition-colors"
                             />
@@ -216,7 +221,7 @@ export default function VariableHelperModal({
                             <input
                                 type="text"
                                 value={defaultValue}
-                                onChange={e => setDefaultValue(e.target.value)}
+                                onChange={e => setDefaultValue(e.target.value.replace(/[}]/g, ''))}
                                 placeholder="e.g. General, English..."
                                 className="w-full p-3.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-2 border-transparent focus:border-primary text-sm text-text-main outline-none transition-colors"
                             />
@@ -240,7 +245,7 @@ export default function VariableHelperModal({
                                                 value={opt}
                                                 onChange={(e) => {
                                                     const updated = [...options];
-                                                    updated[idx] = e.target.value.replace(/\|/g, '-');
+                                                    updated[idx] = e.target.value.replace(/[|}]/g, '-');
                                                     setOptions(updated);
                                                 }}
                                                 placeholder={`Option ${idx + 1}...`}

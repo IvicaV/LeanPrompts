@@ -2581,7 +2581,7 @@ export default function Popup() {
                                                                     if (!isFileVar) {
                                                                         try {
                                                                             const escapedVarName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                                                            const regex = new RegExp(`\\{\\{\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
+                                                                            const regex = new RegExp(`\\{\\{\\s*!?\\s*${escapedVarName}\\s*:(.*?)\\}\\}`, 'i');
                                                                             const match = (stepContentResolved && stepContentResolved.match(regex)) 
                                                                                 || (fullPromptContentResolved && fullPromptContentResolved.match(regex));
                                                                             if (match && match[1] && match[1].trim()) {
