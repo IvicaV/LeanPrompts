@@ -593,7 +593,7 @@ export default function Workspace({
                                             onClick={() => { onShareWorkflow(); setShowMoreMenu(false); }}
                                             className="w-full flex items-center gap-2 px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors"
                                         >
-                                            <Package size={14} /> Export Workflow Bundle
+                                            <Share2 size={14} /> Share Workflow (Link / Bundle)
                                         </button>
                                         <button
                                             onClick={() => { setIsCommunityShareOpen(true); setShowMoreMenu(false); }}

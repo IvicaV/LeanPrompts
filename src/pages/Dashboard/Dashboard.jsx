@@ -3221,6 +3221,7 @@ const initiateWorkflow = async (promptId) => {
         prompt={activePrompt}
         snippets={snippets}
         knowledgeTiles={knowledgeTiles}
+        onNotification={showNotification}
       />
 
       <ConfirmationModal
