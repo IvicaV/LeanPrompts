@@ -21,7 +21,6 @@
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Package, CheckSquare, Square, Share2, Layers, BookOpen, Link, Check, ShieldCheck, Download } from 'lucide-react';
-import download from 'downloadjs';
 import { scanWorkflowDependencies } from '../utils/workflowScan';
 import useBodyLock from '../hooks/useBodyLock';
 import { dbAPI } from '../utils/db';
