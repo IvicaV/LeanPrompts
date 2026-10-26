@@ -78,29 +78,35 @@ const useOnboardingStore = create((set, get) => ({
 
     completeTour: async () => {
         const { tourType } = get();
-        if (typeof chrome !== 'undefined' && chrome.storage) {
-            const key = tourType === 'popup' ? 'lp_onboarding_popup_done' : 'lp_onboarding_dashboard_done';
-            await chrome.storage.local.set({ [key]: true });
-        }
-
         if (tourType === 'popup') {
-            set({ hasCompletedPopupOnboarding: true, isTourActive: false, currentStep: 0 });
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                await chrome.storage.local.set({ lp_onboarding_popup_done: true });
+            }
+            set({ hasCompletedPopupOnboarding: true, isTourActive: false, currentStep: 0, tourType: null });
+        } else if (tourType === 'dashboard') {
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                await chrome.storage.local.set({ lp_onboarding_dashboard_done: true });
+            }
+            set({ hasCompletedDashboardOnboarding: true, isTourActive: false, currentStep: 0, tourType: null });
         } else {
-            set({ hasCompletedDashboardOnboarding: true, isTourActive: false, currentStep: 0 });
+            set({ isTourActive: false, currentStep: 0, tourType: null });
         }
     },
 
     skipTour: async () => {
         const { tourType } = get();
-        if (typeof chrome !== 'undefined' && chrome.storage) {
-            const key = tourType === 'popup' ? 'lp_onboarding_popup_done' : 'lp_onboarding_dashboard_done';
-            await chrome.storage.local.set({ [key]: true });
-        }
-
         if (tourType === 'popup') {
-            set({ hasCompletedPopupOnboarding: true, isTourActive: false, currentStep: 0 });
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                await chrome.storage.local.set({ lp_onboarding_popup_done: true });
+            }
+            set({ hasCompletedPopupOnboarding: true, isTourActive: false, currentStep: 0, tourType: null });
+        } else if (tourType === 'dashboard') {
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                await chrome.storage.local.set({ lp_onboarding_dashboard_done: true });
+            }
+            set({ hasCompletedDashboardOnboarding: true, isTourActive: false, currentStep: 0, tourType: null });
         } else {
-            set({ hasCompletedDashboardOnboarding: true, isTourActive: false, currentStep: 0 });
+            set({ isTourActive: false, currentStep: 0, tourType: null });
         }
     }
 }));

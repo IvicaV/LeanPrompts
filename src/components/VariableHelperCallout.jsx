@@ -7,81 +7,10 @@
  * @license      AGPL-3.0
  * ============================================================================
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import { Sparkles, X } from 'lucide-react';
-import useOnboardingStore from '../stores/onboardingStore';
 
-const STORAGE_KEY = 'lp_feature_variable_helper_seen';
-
-export default function VariableHelperCallout({ onVisibilityChange }) {
-    const [isVisible, setIsVisible] = useState(false);
-    const isTourActive = useOnboardingStore((state) => state.isTourActive);
-
-    const markAsSeen = useCallback(async () => {
-        setIsVisible(false);
-        if (onVisibilityChange) onVisibilityChange(false);
-        try {
-            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                await chrome.storage.local.set({ [STORAGE_KEY]: true });
-            }
-            if (typeof localStorage !== 'undefined') {
-                localStorage.setItem(STORAGE_KEY, 'true');
-            }
-        } catch (err) {
-            console.warn('[VariableHelperCallout] Storage set error:', err);
-        }
-    }, [onVisibilityChange]);
-
-    useEffect(() => {
-        let isMounted = true;
-
-        const checkSeen = async () => {
-            try {
-                let seen = false;
-                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                    const data = await chrome.storage.local.get([STORAGE_KEY]);
-                    seen = !!data?.[STORAGE_KEY];
-                } else if (typeof localStorage !== 'undefined') {
-                    seen = !!localStorage.getItem(STORAGE_KEY);
-                }
-
-                if (!seen && isMounted) {
-                    setIsVisible(true);
-                    if (onVisibilityChange) onVisibilityChange(true);
-                }
-            } catch (err) {
-                console.warn('[VariableHelperCallout] Storage check error:', err);
-            }
-        };
-
-        checkSeen();
-
-        // Auto-dismiss if the helper modal is opened anywhere
-        const handleHelperOpened = () => {
-            markAsSeen();
-        };
-
-        window.addEventListener('lp-open-variable-helper', handleHelperOpened);
-        return () => {
-            isMounted = false;
-            window.removeEventListener('lp-open-variable-helper', handleHelperOpened);
-        };
-    }, [markAsSeen, onVisibilityChange]);
-
-    // Keep parent button styling in sync with tour and visibility state
-    useEffect(() => {
-        if (onVisibilityChange) {
-            onVisibilityChange(isVisible && !isTourActive);
-        }
-    }, [isVisible, isTourActive, onVisibilityChange]);
-
-    const handleDismiss = (e) => {
-        e.stopPropagation();
-        markAsSeen();
-    };
-
-    if (!isVisible || isTourActive) return null;
-
+export default function VariableHelperCallout({ onDismiss }) {
     return (
         <div
             onClick={(e) => e.stopPropagation()}
@@ -100,8 +29,11 @@ export default function VariableHelperCallout({ onVisibilityChange }) {
                 </span>
                 <button
                     type="button"
-                    onClick={handleDismiss}
-                    className="p-1 rounded-lg text-text-muted hover:text-text-main hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (onDismiss) onDismiss();
+                    }}
+                    className="p-1 rounded-lg text-text-muted hover:text-text-main hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                     title="Dismiss"
                 >
                     <X size={14} />

@@ -40,6 +40,8 @@ import { LlmInjectLabel, LlmIconButton } from '../../../components/llm/LlmInject
 import ToolbarButton from '../../../components/ToolbarButton';
 import VariableHelperModal from '../../../components/VariableHelperModal';
 import VariableHelperCallout from '../../../components/VariableHelperCallout';
+import ShareWorkflowCallout from '../../../components/ShareWorkflowCallout';
+import useOnboardingStore from '../../../stores/onboardingStore';
 
 
 /**
@@ -84,7 +86,98 @@ export default function Workspace({
     // --- VARIABLE HELPER MODAL STATE ---
     const [isVariableHelperOpen, setIsVariableHelperOpen] = React.useState(false);
     const [variableHelperData, setVariableHelperData] = React.useState({ mode: 'create', stepId: null });
-    const [isVariableCalloutVisible, setIsVariableCalloutVisible] = React.useState(false);
+
+    // --- FEATURE DISCOVERY CALLOUTS (MUTEX COORDINATOR) ---
+    const isTourActive = useOnboardingStore((state) => state.isTourActive);
+    const [activeFeatureCallout, setActiveFeatureCallout] = React.useState(null); // 'share_workflow' | 'variable_helper' | null
+
+    const dismissFeatureCallout = React.useCallback(async (id) => {
+        setActiveFeatureCallout(prev => (prev === id ? null : prev));
+        const key = id === 'share_workflow' 
+            ? 'lp_feature_share_workflow_seen' 
+            : 'lp_feature_variable_helper_seen';
+        try {
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                await chrome.storage.local.set({ [key]: true });
+            }
+            if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(key, 'true');
+            }
+        } catch (e) {
+            console.warn('[Workspace] dismissFeatureCallout error:', e);
+        }
+
+        // If share_workflow was dismissed, check if variable_helper is still unseen
+        if (id === 'share_workflow') {
+            setTimeout(async () => {
+                try {
+                    let varSeen = false;
+                    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                        const data = await chrome.storage.local.get(['lp_feature_variable_helper_seen']);
+                        varSeen = !!data?.lp_feature_variable_helper_seen;
+                    } else {
+                        varSeen = !!localStorage.getItem('lp_feature_variable_helper_seen');
+                    }
+                    if (!varSeen) {
+                        setActiveFeatureCallout('variable_helper');
+                    }
+                } catch (err) {}
+            }, 400);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        if (isTourActive) {
+            setActiveFeatureCallout(null);
+            return;
+        }
+
+        let isMounted = true;
+        const checkCallouts = async () => {
+            try {
+                let shareSeen = false;
+                let varSeen = false;
+
+                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                    const data = await chrome.storage.local.get([
+                        'lp_feature_share_workflow_seen',
+                        'lp_feature_variable_helper_seen'
+                    ]);
+                    shareSeen = !!data?.lp_feature_share_workflow_seen;
+                    varSeen = !!data?.lp_feature_variable_helper_seen;
+                } else {
+                    shareSeen = !!localStorage.getItem('lp_feature_share_workflow_seen');
+                    varSeen = !!localStorage.getItem('lp_feature_variable_helper_seen');
+                }
+
+                if (!isMounted) return;
+
+                if (!shareSeen) {
+                    setActiveFeatureCallout('share_workflow');
+                } else if (!varSeen) {
+                    setActiveFeatureCallout('variable_helper');
+                } else {
+                    setActiveFeatureCallout(null);
+                }
+            } catch (err) {
+                console.warn('[Workspace] checkCallouts error:', err);
+            }
+        };
+
+        checkCallouts();
+
+        const handleOpenShare = () => dismissFeatureCallout('share_workflow');
+        const handleOpenVar = () => dismissFeatureCallout('variable_helper');
+
+        window.addEventListener('lp-open-share-workflow', handleOpenShare);
+        window.addEventListener('lp-open-variable-helper', handleOpenVar);
+
+        return () => {
+            isMounted = false;
+            window.removeEventListener('lp-open-share-workflow', handleOpenShare);
+            window.removeEventListener('lp-open-variable-helper', handleOpenVar);
+        };
+    }, [isTourActive, dismissFeatureCallout]);
 
     React.useEffect(() => {
         const handleOpenHelper = (e) => {
@@ -573,10 +666,19 @@ export default function Workspace({
                             <ToolbarButton
                                 variant="ghost"
                                 isActive={showMoreMenu}
-                                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                                onClick={() => {
+                                    if (activeFeatureCallout === 'share_workflow') {
+                                        dismissFeatureCallout('share_workflow');
+                                    }
+                                    setShowMoreMenu(!showMoreMenu);
+                                }}
                                 title="More Actions"
+                                className={activeFeatureCallout === 'share_workflow' ? 'relative text-indigo-400 bg-indigo-500/10' : ''}
                             >
                                 <MoreVertical size={18} />
+                                {activeFeatureCallout === 'share_workflow' && (
+                                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-indigo-500 animate-pulse pointer-events-none" />
+                                )}
                             </ToolbarButton>
 
                             {showMoreMenu && (
@@ -590,10 +692,20 @@ export default function Workspace({
                                             <Download size={14} /> Export Prompt (PNG / JSON)
                                         </button>
                                         <button
-                                            onClick={() => { onShareWorkflow(); setShowMoreMenu(false); }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors"
+                                            onClick={() => {
+                                                dismissFeatureCallout('share_workflow');
+                                                onShareWorkflow();
+                                                setShowMoreMenu(false);
+                                            }}
+                                            className="w-full flex items-center justify-between px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors group"
                                         >
-                                            <Share2 size={14} /> Share Workflow (Link / Bundle)
+                                            <div className="flex items-center gap-2">
+                                                <Share2 size={14} />
+                                                <span>Share Workflow (Link / Bundle)</span>
+                                            </div>
+                                            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                                                NEW
+                                            </span>
                                         </button>
                                         <button
                                             onClick={() => { setIsCommunityShareOpen(true); setShowMoreMenu(false); }}
@@ -610,6 +722,16 @@ export default function Workspace({
                                         </button>
                                     </div>
                                 </>
+                            )}
+
+                            {activeFeatureCallout === 'share_workflow' && !showMoreMenu && (
+                                <ShareWorkflowCallout
+                                    onDismiss={() => dismissFeatureCallout('share_workflow')}
+                                    onAction={() => {
+                                        dismissFeatureCallout('share_workflow');
+                                        if (onShareWorkflow) onShareWorkflow();
+                                    }}
+                                />
                             )}
                         </div>
                     </div>
@@ -960,6 +1082,9 @@ export default function Workspace({
                                                     }}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
+                                                        if (activeFeatureCallout === 'variable_helper') {
+                                                            dismissFeatureCallout('variable_helper');
+                                                        }
                                                         window.dispatchEvent(new CustomEvent('lp-open-variable-helper', {
                                                             detail: {
                                                                 mode: 'create',
@@ -967,7 +1092,7 @@ export default function Workspace({
                                                             }
                                                         }));
                                                     }}
-                                                    className={`p-1.5 rounded-md text-xs transition-all flex items-center gap-1 ${isVariableCalloutVisible
+                                                    className={`p-1.5 rounded-md text-xs transition-all flex items-center gap-1 ${activeFeatureCallout === 'variable_helper'
                                                         ? 'bg-amber-400/15 text-amber-600 dark:text-amber-400 border border-amber-400/30'
                                                         : 'text-text-muted hover:text-primary hover:bg-bg-hover'
                                                         }`}
@@ -976,9 +1101,11 @@ export default function Workspace({
                                                     <Plus size={14} />
                                                 </button>
 
-                                                <VariableHelperCallout
-                                                    onVisibilityChange={setIsVariableCalloutVisible}
-                                                />
+                                                {activeFeatureCallout === 'variable_helper' && (
+                                                    <VariableHelperCallout
+                                                        onDismiss={() => dismissFeatureCallout('variable_helper')}
+                                                    />
+                                                )}
                                             </div>
                                         )}
 

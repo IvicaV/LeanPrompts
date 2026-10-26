@@ -38,6 +38,12 @@ export default function ShareWorkflowModal({ isOpen, onClose, prompt, snippets, 
     const [isSharingLink, setIsSharingLink] = useState(false);
     const [shareSuccess, setShareSuccess] = useState(false);
 
+    useEffect(() => {
+        if (isOpen) {
+            window.dispatchEvent(new CustomEvent('lp-open-share-workflow'));
+        }
+    }, [isOpen]);
+
     // Dependency scan
     const dependencies = useMemo(() => {
         if (!prompt || !isOpen) return { snippets: [], knowledgeBase: [] };

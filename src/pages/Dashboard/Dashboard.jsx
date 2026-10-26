@@ -1244,16 +1244,27 @@ const initiateWorkflow = async (promptId) => {
     };
   }, []);
 
-  // Dashboard Onboarding Trigger
+  // Auto-select first prompt in Library view when none is active
   useEffect(() => {
-    // 1. SYNC URL CHECK: Abort immediately if we are targeting ANY view other than library
-    // This is critical because on initial load, currentView defaults to 'library' momentarily
-    // even if the URL specifies ?view=snippets or ?view=settings.
     const params = new URLSearchParams(window.location.search);
     const targetView = params.get('view');
     if (targetView && targetView !== 'library') return;
+    if (currentView !== 'library') return;
 
-    // 2. STATE CHECK: Only trigger in library view
+    // Do not auto-select if a specific prompt is targeted via URL
+    const hasDeepLink = params.get('id') || params.get('promptId');
+    if (hasDeepLink) return;
+
+    if (!activePromptId && prompts.length > 0) {
+      handlePromptSelect(prompts[0].id);
+    }
+  }, [prompts.length, activePromptId, currentView]);
+
+  // Dashboard Onboarding Trigger
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const targetView = params.get('view');
+    if (targetView && targetView !== 'library') return;
     if (currentView !== 'library') return;
 
     const onboardingStore = useOnboardingStore.getState();
@@ -1262,15 +1273,12 @@ const initiateWorkflow = async (promptId) => {
     let isMounted = true;
 
     onboardingStore.loadOnboardingStatus().then(() => {
-      // 3. ASYNC SAFETY: Re-check conditions after storage load
-      // If the user navigated away while loading, isMounted will be false
       if (!isMounted) return;
 
       const latestState = useOnboardingStore.getState();
       if (latestState.hasCompletedDashboardOnboarding || latestState.isTourActive) return;
 
       if (!latestState.hasCompletedDashboardOnboarding) {
-        // Auto-select first prompt to ensure the workspace-targeting steps work
         if (prompts.length > 0 && !activePromptId) {
           handlePromptSelect(prompts[0].id);
         }
@@ -1281,7 +1289,7 @@ const initiateWorkflow = async (promptId) => {
     return () => {
       isMounted = false;
     };
-  }, [prompts.length, currentView]); // Re-run if prompts load late or view changes
+  }, [prompts.length, currentView]);
 
   // ZEN MODE AUTO-DEACTIVATION LOGIC
   // 1. Deactivate Zen Mode when switching views (e.g. from Prompts to Snippets)

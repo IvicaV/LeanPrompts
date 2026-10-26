@@ -55,7 +55,7 @@ export const DASHBOARD_TOUR_STEPS = [
     title: "Editor & Smart Syntax",
     content: "Break tasks into steps. Type `{{Variable}}` to create text inputs, or `{{file: Document}}` to create dedicated file upload zones.",
     position: "bottom",
-    tip: "Type `@` to insert reusable snippets, or use `|` inside variables to create dropdowns (e.g. {{Mode: A|B}}).",
+    tip: "Click the `+` icon on any step for the visual Variable Assistant, or type `@` to insert snippets.",
     icon: <Layers size={20} className="text-indigo-500" />
   },
   {

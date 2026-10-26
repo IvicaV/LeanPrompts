@@ -1511,7 +1511,9 @@ const usePromptStore = create((set, get) => ({
         'lp_last_session',
         'lp_popup_nav',
         'lp_import_in_progress',
-        'lp_keep_values'
+        'lp_keep_values',
+        'lp_feature_share_workflow_seen',
+        'lp_feature_variable_helper_seen'
       ]);
     }
 
