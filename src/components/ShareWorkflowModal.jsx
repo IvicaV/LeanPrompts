@@ -364,12 +364,12 @@ export default function ShareWorkflowModal({ isOpen, onClose, prompt, snippets, 
                         </div>
                     </div>
 
-                    {/* Privacy Guard Notice */}
+                    {/* Privacy Guard & Responsibility Disclaimer */}
                     <div className="p-3.5 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-3">
                         <ShieldCheck size={18} className="text-primary shrink-0 mt-0.5" />
-                        <div className="text-xs text-text-muted leading-relaxed">
-                            <strong className="text-text-main block mb-0.5">Privacy Guard for Web Links</strong>
-                            Saved variable presets and attached personal files are automatically excluded when generating a shareable web link. This protects your internal project variables and passwords from accidental exposure.
+                        <div className="text-[11px] text-text-muted leading-relaxed">
+                            <strong className="text-text-main block mb-0.5">Privacy Guard and Sharing Terms</strong>
+                            Generating a link stores this workflow template unlisted online for one-click importing. Form presets and personal file attachments are excluded automatically. You confirm that your prompt text contains no sensitive credentials, private keys, or third-party proprietary data. You remain solely responsible for shared content.
                         </div>
                     </div>
 
