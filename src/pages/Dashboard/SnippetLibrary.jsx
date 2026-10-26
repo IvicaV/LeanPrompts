@@ -1698,29 +1698,22 @@ export default function SnippetLibrary({
                                         {showMoreMenu && (
                                             <>
                                                 <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)}></div>
-                                                <div className="absolute right-0 top-full mt-2 w-56 bg-bg-surface border border-border shadow-2xl rounded-xl z-50 p-1 animate-in fade-in slide-in-from-top-2 duration-200 dm-dropdown">
-                                                    <div className="px-2 py-1.5 mb-1 border-b border-border/50 flex justify-between items-center">
-                                                        <span className="text-[10px] font-bold text-text-faint uppercase tracking-wider">Snippet Actions</span>
-                                                        <button onClick={() => setShowMoreMenu(false)} className="text-text-muted hover:text-text-main p-0.5 rounded hover:bg-bg-hover transition-colors">
-                                                            <X size={12} />
-                                                        </button>
-                                                    </div>
-
-                                                    <button onClick={() => { handleDownloadJson(); setShowMoreMenu(false); }} className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors group">
-                                                        <div className="flex items-center gap-2.5">
-                                                            <FileJson size={14} className="group-hover:text-primary transition-colors" />
-                                                            <span>Export JSON</span>
-                                                        </div>
+                                                <div className="absolute right-0 top-full mt-2 w-56 bg-bg-surface border border-border shadow-2xl rounded-xl z-50 p-1 animate-in fade-in zoom-in duration-200">
+                                                    <button
+                                                        onClick={() => { handleDownloadJson(); setShowMoreMenu(false); }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-text-muted hover:text-text-main hover:bg-bg-hover rounded-lg transition-colors"
+                                                    >
+                                                        <FileJson size={14} />
+                                                        <span>Export JSON</span>
                                                     </button>
 
-                                                    <button onClick={() => { handleDownloadImage(); setShowMoreMenu(false); }} className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors group">
-                                                        <div className="flex items-center gap-2.5">
-                                                            <ImageIcon size={14} className="group-hover:text-emerald-400 transition-colors" />
-                                                            <span>Export PNG</span>
-                                                        </div>
+                                                    <button
+                                                        onClick={() => { handleDownloadImage(); setShowMoreMenu(false); }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-text-muted hover:text-text-main hover:bg-bg-hover rounded-lg transition-colors"
+                                                    >
+                                                        <ImageIcon size={14} />
+                                                        <span>Export PNG</span>
                                                     </button>
-
-                                                    <div className="h-px bg-border my-1"></div>
 
                                                     <button
                                                         onClick={async () => {
@@ -1731,21 +1724,20 @@ export default function SnippetLibrary({
                                                                 if (onNotification) onNotification("Converted to Prompt successfully!", "success");
                                                             }
                                                         }}
-                                                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs hover:bg-bg-hover text-text-muted hover:text-text-main transition-colors group"
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors"
                                                     >
-                                                        <div className="flex items-center gap-2.5">
-                                                            <FileText size={14} className="text-indigo-400 group-hover:text-indigo-300 transition-colors" />
-                                                            <span className="text-indigo-400 group-hover:text-indigo-300">Convert to Prompt</span>
-                                                        </div>
+                                                        <FileText size={14} />
+                                                        <span>Convert to Prompt</span>
                                                     </button>
 
                                                     <div className="h-px bg-border my-1"></div>
 
-                                                    <button onClick={() => { handleDelete(activeSnippetId, editName); setShowMoreMenu(false); }} className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs hover:bg-red-500/10 text-red-400 hover:text-red-500 transition-colors group">
-                                                        <div className="flex items-center gap-2.5">
-                                                            <Trash2 size={14} />
-                                                            <span>Delete Snippet</span>
-                                                        </div>
+                                                    <button
+                                                        onClick={() => { handleDelete(activeSnippetId, editName); setShowMoreMenu(false); }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                        <span>Delete Snippet</span>
                                                     </button>
                                                 </div>
                                             </>
