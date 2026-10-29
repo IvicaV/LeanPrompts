@@ -20,6 +20,94 @@
  * ============================================================================
  */
 import { dbAPI, initDB } from './db';
+import { computeContentHash } from './externalImportParser';
+
+/**
+ * Builds an immutable baseline fingerprint of an imported entity at import time.
+ */
+export function buildImportBaseline(item) {
+  if (!item) return null;
+  const primaryContent = (item.chain && item.chain.length > 0)
+    ? item.chain.map(s => s.content || '').join('\n')
+    : (item.content || '');
+  const primaryNotes = (item.chain && item.chain.length > 0)
+    ? item.chain.map(s => (s.notes || '').trim()).join('\n')
+    : (item.notes || '').trim();
+  const stepTitlesKey = (item.chain && item.chain.length > 0)
+    ? item.chain.map(s => (s.title || '').trim()).join('\n')
+    : '';
+  return {
+    title: (item.title || item.name || '').trim(),
+    contentHash: computeContentHash(primaryContent),
+    notesHash: computeContentHash(primaryNotes),
+    stepCount: Array.isArray(item.chain) ? item.chain.length : 1,
+    stepTitlesKey,
+    collectionId: item.collectionId || null,
+    tagsKey: Array.isArray(item.tags) ? item.tags.slice().map(t => String(t).trim()).sort().join(',') : ''
+  };
+}
+
+/**
+ * Deterministically checks whether a newly imported item was modified, moved,
+ * tagged, pinned, or rated by the user after it was imported.
+ */
+export function isItemModifiedSinceImport(item) {
+  if (!item) return false;
+
+  // 1. Explicit user engagement signals
+  if (item.isPinned === true || (item.rating && item.rating > 0)) {
+    return true;
+  }
+
+  // 2. If item has an exact importBaseline fingerprint, compare deterministically
+  if (item.importBaseline) {
+    const b = item.importBaseline;
+    const currentTitle = (item.title || item.name || '').trim();
+    if (currentTitle !== b.title) return true;
+
+    const currentCollection = item.collectionId || null;
+    if (currentCollection !== b.collectionId) return true;
+
+    const currentTagsKey = Array.isArray(item.tags)
+      ? item.tags.slice().map(t => String(t).trim()).sort().join(',')
+      : '';
+    if (currentTagsKey !== b.tagsKey) return true;
+
+    if (Array.isArray(item.chain)) {
+      if (item.chain.length !== b.stepCount) return true;
+      if (item.chain.some(s => s.versions && s.versions.length > 0)) {
+        return true;
+      }
+      if (b.stepTitlesKey !== undefined) {
+        const currentStepTitlesKey = item.chain.map(s => (s.title || '').trim()).join('\n');
+        if (currentStepTitlesKey !== b.stepTitlesKey) return true;
+      }
+    }
+
+    const currentNotes = (item.chain && item.chain.length > 0)
+      ? item.chain.map(s => (s.notes || '').trim()).join('\n')
+      : (item.notes || '').trim();
+    const expectedNotesHash = b.notesHash ?? computeContentHash('');
+    if (computeContentHash(currentNotes) !== expectedNotesHash) return true;
+
+    if (item.presets && Object.keys(item.presets).length > 0) return true;
+
+    const currentContent = (item.chain && item.chain.length > 0)
+      ? item.chain.map(s => s.content || '').join('\n')
+      : (item.content || '');
+    if (computeContentHash(currentContent) !== b.contentHash) return true;
+
+    return false;
+  }
+
+  // 3. Fallback for legacy imports without importBaseline: compare timestamps (> 2s grace window)
+  if (item.updatedAt && item.importedAt) {
+    const diffMs = new Date(item.updatedAt).getTime() - new Date(item.importedAt).getTime();
+    if (diffMs > 2000) return true;
+  }
+
+  return false;
+}
 
 // Helper um LocalStorage/ChromeStorage für LLMs zu holen
 async function getSystemData() {
@@ -299,7 +387,7 @@ export const backupManager = {
           }
 
           let cleanedPrompt = { ...p };
-          if (content.meta?.type === 'workflow_bundle' || p.isBlueprint || p.importSessionId) {
+          if (content.meta?.type === 'workflow_bundle' || p.isBlueprint || (p.importSessionId && p.importType !== 'external')) {
             cleanedPrompt.isBlueprint = true;
           }
           if (!options.history) {
@@ -602,6 +690,7 @@ export const backupManager = {
         item.importSessionId = importSessionId;
         item.importBundleName = importBundleName;
         item.importedAt = importedAt;
+        item.importBaseline = buildImportBaseline(item);
       };
 
       const snippetsToSave = [];
@@ -936,6 +1025,195 @@ export const backupManager = {
     }
   },
 
+  async commitExternalImport({ stagedPrompts = [], targetCollectionId = null, autoCreateCollections = true, globalTags = [], sourceLabel = 'External Files' }) {
+    if (!Array.isArray(stagedPrompts) || stagedPrompts.length === 0) {
+      throw new Error("No prompts selected for import.");
+    }
+
+    await chrome.storage.local.set({ lp_import_in_progress: { timestamp: Date.now() } });
+    try {
+      const db = await initDB();
+      const stores = ['prompts', 'collections'];
+      const tx = db.transaction(stores, 'readwrite');
+
+      try {
+        const pStore = tx.objectStore('prompts');
+        const cStore = tx.objectStore('collections');
+
+        const existingPrompts = await pStore.getAll();
+        const existingCollections = await cStore.getAll();
+
+        const existingTitles = new Set(existingPrompts.map(p => (p.title || '').trim().toLowerCase()));
+        const collectionByName = new Map();
+        existingCollections.forEach(c => {
+          if (c && c.name) {
+            collectionByName.set(c.name.trim().toLowerCase(), c.id);
+          }
+        });
+
+        const nowIso = new Date().toISOString();
+        const importSessionId = `imp_ext_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+        const countLabel = stagedPrompts.length === 1 ? '1 Prompt' : `${stagedPrompts.length} Prompts`;
+        const importBundleName = `External Import: ${sourceLabel} (${countLabel})`;
+
+        const COLLECTION_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#14b8a6'];
+        let colorIdx = existingCollections.length;
+
+        const collectionsToPut = [];
+        const promptsToPut = [];
+
+        for (let i = 0; i < stagedPrompts.length; i++) {
+          const item = stagedPrompts[i];
+          const rawContent = typeof item.content === 'string' ? item.content : '';
+          if (!rawContent.trim()) continue;
+
+          // 1. Resolve Target Collection
+          let resolvedCollectionId = targetCollectionId || null;
+          if (!resolvedCollectionId && autoCreateCollections && item.suggestedCollection) {
+            const folderName = item.suggestedCollection.trim();
+            const lowerFolder = folderName.toLowerCase();
+            if (collectionByName.has(lowerFolder)) {
+              resolvedCollectionId = collectionByName.get(lowerFolder);
+            } else if (folderName) {
+              const newColId = crypto.randomUUID();
+              const newCol = {
+                id: newColId,
+                name: folderName,
+                color: COLLECTION_COLORS[colorIdx % COLLECTION_COLORS.length],
+                icon: null,
+                createdAt: nowIso,
+                updatedAt: nowIso,
+                importSessionId,
+                importBundleName,
+                importedAt: nowIso,
+                importType: 'external'
+              };
+              colorIdx++;
+              collectionByName.set(lowerFolder, newColId);
+              collectionsToPut.push(newCol);
+              resolvedCollectionId = newColId;
+            }
+          }
+
+          // 2. Resolve Collision-Free Title (Never overwrite existing prompts)
+          let baseTitle = (item.title || 'Imported Prompt').trim();
+          let finalTitle = baseTitle;
+          let suffixCount = 1;
+          while (existingTitles.has(finalTitle.toLowerCase())) {
+            finalTitle = suffixCount === 1
+              ? `${baseTitle} (Imported)`
+              : `${baseTitle} (Imported ${suffixCount})`;
+            suffixCount++;
+          }
+          existingTitles.add(finalTitle.toLowerCase());
+
+          // 3. Merge Tags cleanly (case-insensitive deduplication)
+          const seenLowerTags = new Set();
+          const mergedTags = [];
+          for (const rawTag of [
+            ...(Array.isArray(item.tags) ? item.tags : []),
+            ...(Array.isArray(globalTags) ? globalTags : [])
+          ]) {
+            const cleanTag = String(rawTag || '').trim().replace(/^#/, '');
+            if (!cleanTag) continue;
+            const lowerTag = cleanTag.toLowerCase();
+            if (!seenLowerTags.has(lowerTag)) {
+              seenLowerTags.add(lowerTag);
+              mergedTags.push(cleanTag);
+            }
+          }
+
+          // 4. Construct Standard LeanPrompts Object (supports both single-step & multi-step harvested chains)
+          const promptId = crypto.randomUUID();
+          // Slightly stagger updatedAt by index milliseconds so sort order matches file order
+          const itemTimestamp = new Date(Date.now() + i).toISOString();
+
+          const rawSteps = Array.isArray(item.steps) && item.steps.length > 0
+            ? item.steps.filter(s => typeof s?.content === 'string' && s.content.trim().length > 0)
+            : [];
+
+          const chainSteps = rawSteps.length > 0
+            ? rawSteps.map((s, idx) => ({
+                id: crypto.randomUUID(),
+                title: (s.title || (rawSteps.length > 1 ? `Step ${idx + 1}` : 'Main Prompt')).trim(),
+                content: s.content,
+                notes: typeof s.notes === 'string' ? s.notes.trim() : '',
+                isVisible: true,
+                versions: [],
+                autoSnapshotReady: true
+              }))
+            : [
+                {
+                  id: crypto.randomUUID(),
+                  title: "Main Prompt",
+                  content: rawContent,
+                  notes: typeof item.notes === 'string' ? item.notes.trim() : '',
+                  isVisible: true,
+                  versions: [],
+                  autoSnapshotReady: true
+                }
+              ];
+
+          const primaryStepContent = chainSteps[0]?.content || rawContent;
+          const primaryStepNotes = chainSteps[0]?.notes || '';
+
+          const newPrompt = {
+            id: promptId,
+            title: finalTitle,
+            content: primaryStepContent,
+            notes: primaryStepNotes,
+            chain: chainSteps,
+            tags: mergedTags,
+            collectionId: resolvedCollectionId,
+            isPinned: false,
+            rating: 0,
+            usageCount: 0,
+            lastAccessed: 0,
+            ignoredVariables: [],
+            presets: {},
+            versions: [],
+            createdAt: itemTimestamp,
+            updatedAt: itemTimestamp,
+            isBlueprint: false,
+            importType: 'external',
+            importSessionId,
+            importBundleName,
+            importedAt: nowIso
+          };
+          newPrompt.importBaseline = buildImportBaseline(newPrompt);
+
+          promptsToPut.push(newPrompt);
+        }
+
+        // 5. Atomic Write inside the active transaction
+        await Promise.all([
+          ...collectionsToPut.map(c => cStore.put(c)),
+          ...promptsToPut.map(p => pStore.put(p))
+        ]);
+
+        await tx.done;
+
+        // Broadcast UI updates across extension contexts
+        chrome.runtime.sendMessage({ action: "RELOAD_DATA" }, () => { if (chrome.runtime.lastError) { } });
+        chrome.runtime.sendMessage({ action: "REFRESH_MENU" }, () => { if (chrome.runtime.lastError) { } });
+
+        return {
+          importSessionId,
+          importedCount: promptsToPut.length,
+          collectionsCreated: collectionsToPut.length
+        };
+      } catch (err) {
+        if (tx) {
+          try { tx.abort(); } catch (abortError) { /* ignore */ }
+        }
+        console.error("External Import Transaction failed:", err);
+        throw new Error("Failed to commit external prompts to database.");
+      }
+    } finally {
+      await chrome.storage.local.remove('lp_import_in_progress');
+    }
+  },
+
   async getRecentImports() {
 
     const db = await initDB();
@@ -945,7 +1223,7 @@ export const backupManager = {
     const sessionsMap = new Map();
 
     for (const p of prompts) {
-      // Check if it was a created duplicate bundle
+      // Check if it was a created duplicate bundle or external batch import
       if (p.importSessionId) {
         if (!sessionsMap.has(p.importSessionId)) {
           sessionsMap.set(p.importSessionId, {
@@ -953,7 +1231,8 @@ export const backupManager = {
             bundleName: p.importBundleName || 'Imported Workflow',
             importedAt: p.importedAt || p.updatedAt || new Date().toISOString(),
             itemCount: 1,
-            isUpdate: false
+            isUpdate: false,
+            importType: p.importType || 'workflow'
           });
         } else {
           sessionsMap.get(p.importSessionId).itemCount++;
@@ -969,7 +1248,8 @@ export const backupManager = {
               bundleName: `Workflow Update: ${p.title}`,
               importedAt: taggedSnapshot.timestamp || new Date().toISOString(),
               itemCount: 1,
-              isUpdate: true
+              isUpdate: true,
+              importType: 'workflow'
             });
           } else {
             sessionsMap.get(taggedSnapshot.importSessionId).itemCount++;
@@ -978,19 +1258,45 @@ export const backupManager = {
       }
     }
 
-    // Note: To be perfectly accurate on item counts we would scan snippets and knowledge too,
-    // but scanning just prompts provides the session list efficiently. We can just say "Workflow" in the UI.
-
     return Array.from(sessionsMap.values()).sort((a, b) => new Date(b.importedAt) - new Date(a.importedAt));
   },
 
-  async undoWorkflowImport(importSessionId) {
-    if (!importSessionId) return false;
+  /**
+   * Inspects an import session prior to rollback so the UI can warn the user
+   * if any prompts in the batch were edited, moved, tagged, or pinned since import.
+   */
+  async inspectImportSession(importSessionId) {
+    if (!importSessionId) return { totalCount: 0, modifiedItems: [], unmodifiedCount: 0 };
+    const db = await initDB();
+    const prompts = await db.getAll('prompts');
 
+    const sessionPrompts = prompts.filter(p => p.importSessionId === importSessionId);
+    const modifiedItems = [];
+
+    for (const p of sessionPrompts) {
+      if (isItemModifiedSinceImport(p)) {
+        modifiedItems.push({
+          id: p.id,
+          title: p.title || 'Untitled Prompt',
+          updatedAt: p.updatedAt
+        });
+      }
+    }
+
+    return {
+      totalCount: sessionPrompts.length,
+      modifiedItems,
+      unmodifiedCount: Math.max(0, sessionPrompts.length - modifiedItems.length)
+    };
+  },
+
+  async undoWorkflowImport(importSessionId, options = { keepModified: false }) {
+    if (!importSessionId) return false;
+    const keepModified = !!options?.keepModified;
 
     const db = await initDB();
 
-    const stores = ['prompts', 'snippets', 'knowledge'];
+    const stores = ['prompts', 'snippets', 'knowledge', 'collections'];
 
     // 1. ATOMIC READ-MODIFY-WRITE: Read inside a transaction to prevent TOCTOU races with auto-save
     const tx_read = db.transaction(stores, 'readwrite');
@@ -1004,10 +1310,13 @@ export const backupManager = {
     const mutations = {
       prompts: { puts: [], deletes: [] },
       snippets: { puts: [], deletes: [] },
-      knowledge: { puts: [], deletes: [] }
+      knowledge: { puts: [], deletes: [] },
+      collections: { puts: [], deletes: [] }
     };
 
-    for (const storeName of stores) {
+    const contentStores = ['prompts', 'snippets', 'knowledge'];
+
+    for (const storeName of contentStores) {
       for (const item of allData[storeName]) {
         let isRestoredUpdate = false;
 
@@ -1041,6 +1350,7 @@ export const backupManager = {
               delete item.importSessionId;
               delete item.importBundleName;
               delete item.importedAt;
+              delete item.importBaseline;
             }
 
             // Remove this specific snapshot since we rolled back to it
@@ -1053,8 +1363,40 @@ export const backupManager = {
 
         // If it wasn't an update, check if it's a completely newly imported item
         if (!isRestoredUpdate && item.importSessionId === importSessionId) {
-          mutations[storeName].deletes.push(item.id);
+          if (keepModified && isItemModifiedSinceImport(item)) {
+            // Graduate modified item to permanent user ownership so it is preserved
+            // and the import session is cleanly closed.
+            delete item.importSessionId;
+            delete item.importBundleName;
+            delete item.importedAt;
+            delete item.importBaseline;
+            mutations[storeName].puts.push(item);
+          } else {
+            mutations[storeName].deletes.push(item.id);
+          }
         }
+      }
+    }
+
+    // Safely clean up collections created during this import session ONLY if no remaining items use them
+    const deletedPromptIds = new Set(mutations.prompts.deletes);
+    const deletedSnippetIds = new Set(mutations.snippets.deletes);
+    const deletedKbIds = new Set(mutations.knowledge.deletes);
+
+    const activeCollectionIds = new Set();
+    allData.prompts.forEach(p => {
+      if (!deletedPromptIds.has(p.id) && p.collectionId) activeCollectionIds.add(p.collectionId);
+    });
+    allData.snippets.forEach(s => {
+      if (!deletedSnippetIds.has(s.id) && s.collectionId) activeCollectionIds.add(s.collectionId);
+    });
+    allData.knowledge.forEach(k => {
+      if (!deletedKbIds.has(k.id) && k.collectionId) activeCollectionIds.add(k.collectionId);
+    });
+
+    for (const col of (allData.collections || [])) {
+      if (col.importSessionId === importSessionId && !activeCollectionIds.has(col.id)) {
+        mutations.collections.deletes.push(col.id);
       }
     }
 

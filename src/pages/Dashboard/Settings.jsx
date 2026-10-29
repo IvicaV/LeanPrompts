@@ -59,6 +59,7 @@ import useOnboardingStore from '../../stores/onboardingStore';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import SmartMergeModal from '../../components/SmartMergeModal';
 import UpdateConflictModal from '../../components/UpdateConflictModal';
+import ExternalImportModal from '../../components/ExternalImportModal';
 
 export default function Settings({ onViewChange }) {
     // --- STORE & STATE ---
@@ -130,9 +131,11 @@ export default function Settings({ onViewChange }) {
     const [importContent, setImportContent] = useState(null);
     const [workflowImportData, setWorkflowImportData] = useState(null); // Workflow Bundle Data
     const [isSmartMergeModalOpen, setIsSmartMergeModalOpen] = useState(false);
+    const [isExternalImportOpen, setIsExternalImportOpen] = useState(false);
     const [recentImports, setRecentImports] = useState([]);
     const [importOptions, setImportOptions] = useState([]);
     const [isSmartImport, setIsSmartImport] = useState(true);
+    const [keepModifiedOnUndo, setKeepModifiedOnUndo] = useState(true);
     const [importResults, setImportResults] = useState(null); // NEW: Store results for report
 
     // NEW State for Workflow Conflict "Intelligent Update" Modal
@@ -340,7 +343,8 @@ export default function Settings({ onViewChange }) {
             setImportResults(null);
         }
         else if (modalConfig.type === 'undo_import') {
-            executeUndoImport(modalConfig.data.importSessionId);
+            const hasModified = (modalConfig.data?.modifiedItems?.length || 0) > 0;
+            executeUndoImport(modalConfig.data.importSessionId, hasModified ? keepModifiedOnUndo : false);
             setModalConfig(prev => ({ ...prev, isOpen: false }));
         }
         else if (modalConfig.type === 'reset_llms') {
@@ -446,25 +450,43 @@ export default function Settings({ onViewChange }) {
     }, []);
 
     const handleUndoImport = async (importSessionId) => {
+        setKeepModifiedOnUndo(true);
+        let inspection = { totalCount: 0, modifiedItems: [], unmodifiedCount: 0 };
+        try {
+            inspection = await backupManager.inspectImportSession(importSessionId);
+        } catch (err) {
+            console.warn("Failed to inspect import session prior to undo:", err);
+        }
+
+        const hasModified = inspection.modifiedItems.length > 0;
+
         setModalConfig({
             isOpen: true,
-            title: "Undo Import",
-            message: "Are you sure you want to undo this import? This will delete all new items and revert all affected Prompts/Presets to their previous state. This action cannot be reversed.",
+            title: hasModified ? "Modified Prompts Detected" : "Undo Import",
+            message: hasModified
+                ? `${inspection.modifiedItems.length} of ${inspection.totalCount} imported prompt${inspection.totalCount === 1 ? '' : 's'} in this batch ${inspection.modifiedItems.length === 1 ? 'was' : 'were'} edited, moved, or pinned since import. Choose how to proceed:`
+                : "Are you sure you want to undo this import? This will delete all new items and revert all affected Prompts/Presets to their previous state. This action cannot be reversed.",
             type: 'undo_import',
-            data: { importSessionId }
+            isDangerous: !hasModified,
+            data: {
+                importSessionId,
+                modifiedItems: inspection.modifiedItems,
+                unmodifiedCount: inspection.unmodifiedCount,
+                totalCount: inspection.totalCount
+            }
         });
     };
 
-    const executeUndoImport = async (importSessionId) => {
+    const executeUndoImport = async (importSessionId, keepModified = false) => {
         setIsProcessingModal(true);
         usePromptStore.getState().setSyncing(true); // START MUTEX LOCK
         setTimeout(async () => {
             if (!isMounted.current) return;
             try {
-                await backupManager.undoWorkflowImport(importSessionId);
+                await backupManager.undoWorkflowImport(importSessionId, { keepModified });
                 await loadPrompts();
                 await loadRecentImports();
-                showMsg("success", "Import successfully reversed.");
+                showMsg("success", keepModified ? "Unmodified import items removed; your edited prompts were kept." : "Import successfully reversed.");
             } catch (err) {
                 showMsg("error", "Undo failed: " + err.message);
             } finally {
@@ -1090,7 +1112,7 @@ export default function Settings({ onViewChange }) {
                         </div>
                         <div>
                             <div className="flex items-baseline gap-2">
-                                <h3 className="text-lg font-semibold text-text-main">Data Backup</h3>
+                                <h3 className="text-lg font-semibold text-text-main">Data Backup & Import</h3>
                                 {settings.lastBackupTime && (
                                     <span className="text-[11px] text-text-muted italic opacity-60">
                                         (Last Backup: {new Date(settings.lastBackupTime).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })})
@@ -1141,6 +1163,25 @@ export default function Settings({ onViewChange }) {
                         </label>
                     </div>
 
+                    <div className="mt-4">
+                        <button
+                            type="button"
+                            onClick={() => setIsExternalImportOpen(true)}
+                            className="w-full flex items-center justify-between p-4 border border-border bg-bg-elevated hover:border-indigo-500/40 rounded-xl transition-all group"
+                        >
+                            <div className="flex items-center gap-3 text-left">
+                                <div className="p-2 rounded-lg bg-primary-subtle group-hover:bg-indigo-500/15 text-primary transition-colors">
+                                    <Upload size={18} />
+                                </div>
+                                <div>
+                                    <div className="text-sm font-semibold text-text-main">Import External Prompts (Markdown, Notion, Obsidian, CSV)</div>
+                                    <div className="text-xs text-text-muted mt-0.5">Batch-import .md, .txt, .csv files or folders with live preview & 1-click rollback</div>
+                                </div>
+                            </div>
+                            <span className="text-xs font-bold text-primary shrink-0">Open Wizard →</span>
+                        </button>
+                    </div>
+
                     {status && (
                         <div className={`mt-4 p-3 rounded-lg flex items-center gap-2 text-sm font-medium animate-fade-in ${status === 'success' ? 'bg-green-500/10 text-green-500' :
                             status === 'loading' ? 'bg-primary/10 text-primary' :
@@ -1160,10 +1201,10 @@ export default function Settings({ onViewChange }) {
                                 <Undo2 size={24} />
                             </div>
                             <div>
-                                <h3 className="text-lg font-semibold text-text-main">Imported Workflows</h3>
+                                <h3 className="text-lg font-semibold text-text-main">Imported Workflows & Batches</h3>
                                 <p className="text-sm text-text-muted mt-1 leading-relaxed">
-                                    Review imported Workflows. You can easily rollback accidental imports to instantly remove all items added during that session. <br />
-                                    <span className="text-xs opacity-70 italic">Note: This only applies to Workflow Bundles, not full system backups.</span>
+                                    Review imported Workflow Bundles and External Prompt Batches. You can easily rollback accidental imports to instantly remove all items added during that session. <br />
+                                    <span className="text-xs opacity-70 italic">Note: This applies to Workflow Bundles and External Batch Imports, not full system backups.</span>
                                 </p>
                             </div>
                         </div>
@@ -1244,6 +1285,17 @@ export default function Settings({ onViewChange }) {
                 existingPromptTitle={conflictModalData.promptTitle}
                 isExactContent={conflictModalData.isExactContent}
             />
+
+            {isExternalImportOpen && (
+                <ExternalImportModal
+                    isOpen={isExternalImportOpen}
+                    onClose={() => setIsExternalImportOpen(false)}
+                    onSuccess={async (res) => {
+                        await loadRecentImports();
+                        showMsg("success", `Imported ${res.importedCount} external prompt${res.importedCount === 1 ? '' : 's'} successfully!`);
+                    }}
+                />
+            )}
 
             <ConfirmationModal
                 isOpen={modalConfig.isOpen}
@@ -1331,6 +1383,47 @@ export default function Settings({ onViewChange }) {
                                     {isSmartImport
                                         ? 'Only merges newer or missing content. Protects your more recent local work from being overwritten by older backups.'
                                         : 'A 1:1 restore that replaces everything in the selected categories. Existing local data in these areas will be deleted.'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* CASE: Undo Import with Modified Items Protection */}
+                {modalConfig.type === 'undo_import' && modalConfig.data?.modifiedItems?.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-border space-y-3">
+                        <div className="max-h-28 overflow-y-auto custom-scrollbar bg-bg border border-border rounded-lg p-2.5 space-y-1">
+                            {modalConfig.data.modifiedItems.map(item => (
+                                <div key={item.id} className="text-xs text-text-main font-medium flex items-center gap-2 truncate">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                                    <span className="truncate">{item.title}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div
+                            onClick={() => setKeepModifiedOnUndo(!keepModifiedOnUndo)}
+                            className={`group flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${keepModifiedOnUndo
+                                ? 'bg-primary-subtle border-primary'
+                                : 'bg-red-500/10 border-red-500'
+                                }`}
+                        >
+                            <div className={`mt-0.5 shrink-0 transition-colors ${keepModifiedOnUndo ? 'text-primary' : 'text-red-500'}`}>
+                                {keepModifiedOnUndo ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-1 gap-2">
+                                    <span className="text-sm font-bold text-text-main truncate">
+                                        {keepModifiedOnUndo ? 'Keep Modified Prompts (Recommended)' : 'Delete Everything (Destructive)'}
+                                    </span>
+                                    <div className={`shrink-0 transition-colors ${keepModifiedOnUndo ? 'text-primary' : 'text-red-500'}`}>
+                                        {keepModifiedOnUndo ? <CheckSquare size={16} /> : <Square size={16} />}
+                                    </div>
+                                </div>
+                                <p className="text-[11px] text-text-muted leading-relaxed">
+                                    {keepModifiedOnUndo
+                                        ? `Removes ${modalConfig.data.unmodifiedCount} untouched prompt${modalConfig.data.unmodifiedCount === 1 ? '' : 's'} and safely preserves the ${modalConfig.data.modifiedItems.length} prompt${modalConfig.data.modifiedItems.length === 1 ? '' : 's'} you edited or organized.`
+                                        : `Deletes all ${modalConfig.data.totalCount} prompts from this import batch, including your manual edits and changes.`}
                                 </p>
                             </div>
                         </div>

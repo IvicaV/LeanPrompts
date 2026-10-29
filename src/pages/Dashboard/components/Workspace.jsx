@@ -90,6 +90,25 @@ export default function Workspace({
     // --- FEATURE DISCOVERY CALLOUTS (MUTEX COORDINATOR) ---
     const isTourActive = useOnboardingStore((state) => state.isTourActive);
     const [activeFeatureCallout, setActiveFeatureCallout] = React.useState(null); // 'share_workflow' | 'variable_helper' | null
+    const [showShareWorkflowNewBadge, setShowShareWorkflowNewBadge] = React.useState(false);
+
+    const markShareWorkflowUsed = React.useCallback(async () => {
+        setShowShareWorkflowNewBadge(false);
+        try {
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                await chrome.storage.local.set({
+                    lp_feature_share_workflow_seen: true,
+                    lp_feature_share_workflow_used: true
+                });
+            }
+            if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('lp_feature_share_workflow_seen', 'true');
+                localStorage.setItem('lp_feature_share_workflow_used', 'true');
+            }
+        } catch (e) {
+            console.warn('[Workspace] markShareWorkflowUsed error:', e);
+        }
+    }, []);
 
     const dismissFeatureCallout = React.useCallback(async (id) => {
         setActiveFeatureCallout(prev => (prev === id ? null : prev));
@@ -133,26 +152,40 @@ export default function Workspace({
         }
 
         let isMounted = true;
+        let delayTimer = null;
         const checkCallouts = async () => {
             try {
+                let importSeen = false;
                 let shareSeen = false;
+                let shareUsed = false;
                 let varSeen = false;
 
                 if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
                     const data = await chrome.storage.local.get([
+                        'lp_feature_external_import_seen',
                         'lp_feature_share_workflow_seen',
+                        'lp_feature_share_workflow_used',
                         'lp_feature_variable_helper_seen'
                     ]);
+                    importSeen = !!data?.lp_feature_external_import_seen;
                     shareSeen = !!data?.lp_feature_share_workflow_seen;
+                    shareUsed = !!data?.lp_feature_share_workflow_used;
                     varSeen = !!data?.lp_feature_variable_helper_seen;
                 } else {
+                    importSeen = !!localStorage.getItem('lp_feature_external_import_seen');
                     shareSeen = !!localStorage.getItem('lp_feature_share_workflow_seen');
+                    shareUsed = !!localStorage.getItem('lp_feature_share_workflow_used');
                     varSeen = !!localStorage.getItem('lp_feature_variable_helper_seen');
                 }
 
                 if (!isMounted) return;
 
-                if (!shareSeen) {
+                setShowShareWorkflowNewBadge(!shareUsed);
+
+                // If the External Import callout in LibraryPanel is currently active (on wide screens), wait for it first
+                if (!importSeen && window.innerWidth >= 900) {
+                    setActiveFeatureCallout(null);
+                } else if (!shareSeen && !shareUsed) {
                     setActiveFeatureCallout('share_workflow');
                 } else if (!varSeen) {
                     setActiveFeatureCallout('variable_helper');
@@ -166,18 +199,30 @@ export default function Workspace({
 
         checkCallouts();
 
-        const handleOpenShare = () => dismissFeatureCallout('share_workflow');
+        const handleOpenShare = () => {
+            markShareWorkflowUsed();
+            dismissFeatureCallout('share_workflow');
+        };
         const handleOpenVar = () => dismissFeatureCallout('variable_helper');
+        const handleImportDismissed = () => {
+            if (delayTimer) clearTimeout(delayTimer);
+            delayTimer = setTimeout(() => {
+                if (isMounted) checkCallouts();
+            }, 400);
+        };
 
         window.addEventListener('lp-open-share-workflow', handleOpenShare);
         window.addEventListener('lp-open-variable-helper', handleOpenVar);
+        window.addEventListener('lp-external-import-callout-dismissed', handleImportDismissed);
 
         return () => {
             isMounted = false;
+            if (delayTimer) clearTimeout(delayTimer);
             window.removeEventListener('lp-open-share-workflow', handleOpenShare);
             window.removeEventListener('lp-open-variable-helper', handleOpenVar);
+            window.removeEventListener('lp-external-import-callout-dismissed', handleImportDismissed);
         };
-    }, [isTourActive, dismissFeatureCallout]);
+    }, [isTourActive, dismissFeatureCallout, markShareWorkflowUsed]);
 
     React.useEffect(() => {
         const handleOpenHelper = (e) => {
@@ -684,41 +729,47 @@ export default function Workspace({
                             {showMoreMenu && (
                                 <>
                                     <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)}></div>
-                                    <div className="absolute right-0 mt-2 w-56 bg-bg-surface border border-border rounded-xl shadow-2xl z-50 p-1 animate-in fade-in zoom-in duration-200">
+                                    <div className="absolute right-0 mt-2 w-64 min-w-max bg-bg-surface border border-border rounded-xl shadow-2xl z-50 p-1 animate-in fade-in zoom-in duration-200">
                                         <button
                                             onClick={() => { onShare(); setShowMoreMenu(false); }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-text-muted hover:text-text-main hover:bg-bg-hover rounded-lg transition-colors"
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-text-muted hover:text-text-main hover:bg-bg-hover rounded-lg transition-colors text-left whitespace-nowrap"
                                         >
-                                            <Download size={14} /> Export Prompt (PNG / JSON)
+                                            <Download size={14} className="shrink-0" />
+                                            <span>Export Prompt (PNG / JSON)</span>
                                         </button>
                                         <button
                                             onClick={() => {
                                                 dismissFeatureCallout('share_workflow');
+                                                markShareWorkflowUsed();
                                                 onShareWorkflow();
                                                 setShowMoreMenu(false);
                                             }}
-                                            className="w-full flex items-center justify-between px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors group"
+                                            className="w-full flex items-center justify-between gap-3 px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors group text-left whitespace-nowrap"
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <Share2 size={14} />
+                                            <div className="flex items-center gap-2 whitespace-nowrap">
+                                                <Share2 size={14} className="shrink-0" />
                                                 <span>Share Workflow (Link / Bundle)</span>
                                             </div>
-                                            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                                                NEW
-                                            </span>
+                                            {showShareWorkflowNewBadge && (
+                                                <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shrink-0">
+                                                    NEW
+                                                </span>
+                                            )}
                                         </button>
                                         <button
                                             onClick={() => { setIsCommunityShareOpen(true); setShowMoreMenu(false); }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors"
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-colors text-left whitespace-nowrap"
                                         >
-                                            <Share2 size={12} /> Share to Community Hub
+                                            <Share2 size={12} className="shrink-0" />
+                                            <span>Share to Community Hub</span>
                                         </button>
                                         <div className="h-px bg-border my-1"></div>
                                         <button
                                             onClick={() => { onDeletePrompt(); setShowMoreMenu(false); }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left whitespace-nowrap"
                                         >
-                                            <Trash2 size={14} /> Delete Prompt
+                                            <Trash2 size={14} className="shrink-0" />
+                                            <span>Delete Prompt</span>
                                         </button>
                                     </div>
                                 </>
@@ -729,6 +780,7 @@ export default function Workspace({
                                     onDismiss={() => dismissFeatureCallout('share_workflow')}
                                     onAction={() => {
                                         dismissFeatureCallout('share_workflow');
+                                        markShareWorkflowUsed();
                                         if (onShareWorkflow) onShareWorkflow();
                                     }}
                                 />

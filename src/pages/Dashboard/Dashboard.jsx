@@ -1384,12 +1384,13 @@ const initiateWorkflow = async (promptId) => {
   };
 
   const filteredSuggestions = useMemo(() => {
-    const isBlueprintPrompt = activePrompt?.isBlueprint || !!activePrompt?.importSessionId || !!activePrompt?.importedAt;
+    const isBlueprintPrompt = activePrompt?.isBlueprint === true ||
+      (activePrompt?.importType !== 'external' && (!!activePrompt?.importSessionId || !!activePrompt?.importedAt));
     if (isBlueprintPrompt) return [];
 
     const ignored = activePrompt?.ignoredVariables || [];
     return syntaxSuggestions.filter(s => !ignored.includes(s.text));
-  }, [syntaxSuggestions, activePrompt?.ignoredVariables, activePrompt?.isBlueprint, activePrompt?.importSessionId, activePrompt?.importedAt]);
+  }, [syntaxSuggestions, activePrompt?.ignoredVariables, activePrompt?.isBlueprint, activePrompt?.importType, activePrompt?.importSessionId, activePrompt?.importedAt]);
 
   const applyTheme = (theme) => {
     const isDark = theme === 'dark';
@@ -3013,6 +3014,7 @@ const initiateWorkflow = async (promptId) => {
                 backlinks={promptBacklinks}
                 onOpenKnowledgeTile={handleOpenKnowledgeTile}
                 onOpenPromptNote={handleOpenPromptNote}
+                onNotification={showNotification}
               />
 
               <main className="flex-1 flex min-w-0 bg-bg relative overflow-hidden">

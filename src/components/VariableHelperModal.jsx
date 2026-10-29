@@ -134,7 +134,7 @@ export default function VariableHelperModal({
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
 
             {/* Modal Card */}
-            <div className="modal-glass-panel w-full max-w-[480px] max-h-[calc(100vh-2rem)] flex flex-col pointer-events-auto rounded-[28px] p-5 sm:p-6 shadow-2xl relative border border-border/80 dark:border-white/10 bg-bg-surface dark:bg-[#131316] text-left overflow-hidden">
+            <div className="modal-glass-panel dm-modal w-full max-w-[480px] max-h-[calc(100vh-2rem)] flex flex-col pointer-events-auto rounded-[28px] p-5 sm:p-6 shadow-2xl relative border border-border dark:border-white/10 bg-bg-surface dark:bg-[#131316] text-left overflow-hidden">
                 
                 {/* Fixed Top Section: Handle, Header & Tabs */}
                 <div className="shrink-0">
@@ -180,7 +180,7 @@ export default function VariableHelperModal({
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`py-2 px-1 rounded-xl text-xs font-semibold border-2 transition-all flex items-center justify-center gap-2 ${
                                         isActive
-                                            ? 'border-primary bg-primary/5 text-primary'
+                                            ? 'border-primary bg-primary-subtle text-primary'
                                             : 'border-transparent bg-zinc-100 dark:bg-zinc-800/50 text-text-muted hover:bg-zinc-200/60 dark:hover:bg-zinc-800'
                                     }`}
                                 >
@@ -284,7 +284,7 @@ export default function VariableHelperModal({
                     )}
 
                     {activeTab === 'file' && (
-                        <div className="p-4 rounded-xl bg-primary-subtle border border-primary/20 text-xs text-text-muted leading-relaxed">
+                        <div className="p-4 rounded-xl bg-primary-subtle border border-indigo-500/30 text-xs text-text-muted leading-relaxed">
                             Creates a dedicated <strong>File Dropzone</strong> in the Inspector sidebar where documents or images can be attached.
                         </div>
                     )}
@@ -308,7 +308,7 @@ export default function VariableHelperModal({
                                         onClick={() => setSelectedMacro(m.id)}
                                         className={`p-3 rounded-xl text-left border-2 transition-all flex items-center justify-between ${
                                             selectedMacro === m.id
-                                                ? 'border-primary bg-primary/5 text-text-main'
+                                                ? 'border-primary bg-primary-subtle text-text-main'
                                                 : 'border-transparent bg-zinc-100 dark:bg-zinc-800/50 text-text-muted hover:bg-zinc-200/60 dark:hover:bg-zinc-800'
                                         }`}
                                     >

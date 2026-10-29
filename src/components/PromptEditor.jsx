@@ -895,7 +895,80 @@ const PromptEditor = ({ value, onChange, snippets = [], allowAttachments = true,
   };
 
   const variableCompletions = (context) => {
-    let word = context.matchBefore(/\{\{[!\w:-]*/);
+    const sel = context.state.selection.main;
+    const doc = context.state.doc;
+
+    // 1. AUTO-WRAP SELECTION SUPPORT (Left-to-Right & Right-to-Left):
+    // When the user selects text (e.g. "Neue Funktion") and types '{{', CodeMirror's
+    // closeBrackets wraps the selection into "{{Neue Funktion}}" and keeps the inner text selected.
+    // For left-to-right selections, context.pos (selection.head) is at sel.to (right before '}}').
+    if (
+      sel.from !== sel.to &&
+      sel.from >= 2 &&
+      sel.to - sel.from <= 250 &&
+      doc.sliceString(sel.from - 2, sel.from) === '{{' &&
+      doc.sliceString(sel.to, sel.to + 2) === '}}'
+    ) {
+      const trimmedSelected = doc.sliceString(sel.from, sel.to).trim();
+      if (trimmedSelected && !/[{}\r\n]/.test(trimmedSelected)) {
+        const replaceFrom = sel.from - 2;
+        const replaceTo = sel.to + 2;
+        const safeVarName = trimmedSelected.replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+        const safeFileName = trimmedSelected.replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+
+        const systemOptions = [
+          { label: '{{$date}}', detail: 'Current date', type: 'keyword', boost: -1 },
+          { label: '{{$time}}', detail: 'Current time', type: 'keyword', boost: -2 },
+          { label: '{{$day}}', detail: 'Current weekday', type: 'keyword', boost: -3 },
+          { label: '{{$uuid}}', detail: 'Unique ID', type: 'keyword', boost: -4 },
+          { label: '{{$language}}', detail: 'Browser locale', type: 'keyword', boost: -5 }
+        ].map(opt => ({
+          ...opt,
+          apply: (view) => {
+            view.dispatch({
+              changes: { from: replaceFrom, to: replaceTo, insert: opt.label },
+              selection: { anchor: replaceFrom + opt.label.length }
+            });
+          }
+        }));
+
+        return {
+          from: replaceFrom,
+          filter: false,
+          options: [
+            {
+              label: `{{${trimmedSelected}}}`,
+              detail: 'Wrap text as variable',
+              type: 'variable',
+              boost: 2,
+              apply: (view) => {
+                const insertText = `{{${safeVarName}}}`;
+                view.dispatch({
+                  changes: { from: replaceFrom, to: replaceTo, insert: insertText },
+                  selection: { anchor: replaceFrom + insertText.length }
+                });
+              }
+            },
+            {
+              label: `{{file: ${trimmedSelected}}}`,
+              detail: 'Wrap text as File Dropzone',
+              type: 'variable',
+              boost: 1,
+              apply: (view) => {
+                const insertText = `{{file: ${safeFileName}}}`;
+                view.dispatch({
+                  changes: { from: replaceFrom, to: replaceTo, insert: insertText },
+                  selection: { anchor: replaceFrom + insertText.length }
+                });
+              }
+            },
+            ...systemOptions
+          ]
+        };
+      }
+    }
+
+    let word = context.matchBefore(/\{\{[!\wäöüÄÖÜß:-]*/);
     if (!word) return null;
     if (word.from === word.to && !context.explicit) return null;
 
