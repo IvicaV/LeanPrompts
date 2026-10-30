@@ -36,6 +36,7 @@ export function buildImportBaseline(item) {
   const stepTitlesKey = (item.chain && item.chain.length > 0)
     ? item.chain.map(s => (s.title || '').trim()).join('\n')
     : '';
+  const presetsHash = item.presets ? computeContentHash(JSON.stringify(item.presets)) : null;
   return {
     title: (item.title || item.name || '').trim(),
     contentHash: computeContentHash(primaryContent),
@@ -43,7 +44,8 @@ export function buildImportBaseline(item) {
     stepCount: Array.isArray(item.chain) ? item.chain.length : 1,
     stepTitlesKey,
     collectionId: item.collectionId || null,
-    tagsKey: Array.isArray(item.tags) ? item.tags.slice().map(t => String(t).trim()).sort().join(',') : ''
+    tagsKey: Array.isArray(item.tags) ? item.tags.slice().map(t => String(t).trim()).sort().join(',') : '',
+    presetsHash
   };
 }
 
@@ -75,9 +77,6 @@ export function isItemModifiedSinceImport(item) {
 
     if (Array.isArray(item.chain)) {
       if (item.chain.length !== b.stepCount) return true;
-      if (item.chain.some(s => s.versions && s.versions.length > 0)) {
-        return true;
-      }
       if (b.stepTitlesKey !== undefined) {
         const currentStepTitlesKey = item.chain.map(s => (s.title || '').trim()).join('\n');
         if (currentStepTitlesKey !== b.stepTitlesKey) return true;
@@ -90,7 +89,10 @@ export function isItemModifiedSinceImport(item) {
     const expectedNotesHash = b.notesHash ?? computeContentHash('');
     if (computeContentHash(currentNotes) !== expectedNotesHash) return true;
 
-    if (item.presets && Object.keys(item.presets).length > 0) return true;
+    if (b.presetsHash !== undefined && b.presetsHash !== null) {
+      const currentPresetsHash = item.presets ? computeContentHash(JSON.stringify(item.presets)) : null;
+      if (currentPresetsHash !== b.presetsHash) return true;
+    }
 
     const currentContent = (item.chain && item.chain.length > 0)
       ? item.chain.map(s => s.content || '').join('\n')
