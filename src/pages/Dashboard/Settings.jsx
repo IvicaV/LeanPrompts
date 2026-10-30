@@ -1305,7 +1305,8 @@ export default function Settings({ onViewChange }) {
                 onCheckboxChange={toggleImportOption}
                 onConfirm={handleConfirm}
                 onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
-                confirmText={modalConfig.type === 'report' ? "Got it" : (modalConfig.type === 'error' ? "Got it" : (modalConfig.type === 'delete_all' ? "Permanently Delete Everything" : (modalConfig.type === 'undo_import' ? "Confirm Undo" : (isSmartImport ? "Start Smart Import" : "Start Full Restore"))))}
+                isDangerous={modalConfig.isDangerous ?? false}
+                confirmText={modalConfig.confirmText || (modalConfig.type === 'report' ? "Got it" : (modalConfig.type === 'error' ? "Got it" : (modalConfig.type === 'delete_all' ? "Permanently Delete Everything" : (modalConfig.type === 'undo_import' ? "Confirm Undo" : (isSmartImport ? "Start Smart Import" : "Start Full Restore")))))}
                 hideCancel={modalConfig.type === 'report' || modalConfig.type === 'error'}
             >
                 {/* CASE: Detailed Report Modal */}
@@ -1389,21 +1390,46 @@ export default function Settings({ onViewChange }) {
 
                 {/* CASE: Undo Import with Modified Items Warning */}
                 {modalConfig.type === 'undo_import' && modalConfig.data?.modifiedItems?.length > 0 && (
-                    <div className="mt-4 pt-3 border-t border-border space-y-3">
-                        <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
-                            Modified items in this workflow:
+                    <div className="mt-4 pt-4 border-t border-border space-y-3.5">
+                        <div className="flex items-center justify-between text-[11px] font-semibold text-text-muted uppercase tracking-wider">
+                            <span>Modified Components in Workflow</span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 uppercase tracking-wide">
+                                {modalConfig.data.modifiedItems.length} edited
+                            </span>
                         </div>
-                        <div className="max-h-28 overflow-y-auto custom-scrollbar bg-bg border border-border rounded-lg p-2.5 space-y-1">
+                        <div className="max-h-44 overflow-y-auto custom-scrollbar rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/40 divide-y divide-zinc-200 dark:divide-zinc-800/60">
                             {modalConfig.data.modifiedItems.map(item => (
-                                <div key={item.id} className="text-xs text-text-main font-medium flex items-center gap-2 truncate">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                                    <span className="truncate">{item.title}</span>
+                                <div key={item.id} className="text-xs flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30">
+                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                                        <span className="truncate font-medium text-text-main" title={item.title}>
+                                            {item.title}
+                                        </span>
+                                    </div>
+                                    {item.changes && item.changes.length > 0 && (
+                                        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                                            {item.changes.map((change, cIdx) => (
+                                                <span
+                                                    key={cIdx}
+                                                    className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-md bg-zinc-200/70 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300/60 dark:border-zinc-700/60 whitespace-nowrap"
+                                                >
+                                                    {change}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
-                        <p className="text-xs text-red-400 font-medium leading-relaxed">
-                            A rollback permanently deletes the entire workflow including all your modifications to prevent orphaned prompt references. Do you want to delete everything?
-                        </p>
+                        <div className="flex items-start gap-3 p-3.5 rounded-xl border border-red-500/20 bg-red-500/5 dark:bg-red-500/10 text-text-main">
+                            <div className="p-1.5 rounded-lg bg-red-500/10 text-red-500 shrink-0 mt-0.5">
+                                <AlertTriangle size={15} />
+                            </div>
+                            <div className="text-xs leading-relaxed text-text-muted">
+                                <span className="font-semibold text-text-main block mb-0.5">Workflow Rollback Confirmation</span>
+                                Rolling back permanently deletes this entire workflow and all listed modifications. This action cannot be reversed.
+                            </div>
+                        </div>
                     </div>
                 )}
 

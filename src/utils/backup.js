@@ -28,11 +28,11 @@ import { computeContentHash } from './externalImportParser';
 export function buildImportBaseline(item) {
   if (!item) return null;
   const primaryContent = (item.chain && item.chain.length > 0)
-    ? item.chain.map(s => s.content || '').join('\n')
-    : (item.content || '');
+    ? item.chain.map(s => (s.content || '').replace(/\r\n/g, '\n')).join('\n')
+    : (item.content || '').replace(/\r\n/g, '\n');
   const primaryNotes = (item.chain && item.chain.length > 0)
-    ? item.chain.map(s => (s.notes || '').trim()).join('\n')
-    : (item.notes || '').trim();
+    ? item.chain.map(s => (s.notes || '').replace(/\r\n/g, '\n').trim()).join('\n')
+    : (item.notes || '').replace(/\r\n/g, '\n').trim();
   const stepTitlesKey = (item.chain && item.chain.length > 0)
     ? item.chain.map(s => (s.title || '').trim()).join('\n')
     : '';
@@ -52,63 +52,80 @@ export function buildImportBaseline(item) {
 /**
  * Deterministically checks whether a newly imported item was modified, moved,
  * tagged, pinned, or rated by the user after it was imported.
+ * Returns an array of specific user modifications detected on an imported item.
  */
-export function isItemModifiedSinceImport(item) {
-  if (!item) return false;
+export function getItemModifications(item) {
+  if (!item) return [];
+  const changes = [];
 
-  // 1. Explicit user engagement signals
-  if (item.isPinned === true || (item.rating && item.rating > 0)) {
-    return true;
-  }
+  if (item.isPinned === true) changes.push('Pinned');
+  if (item.rating && item.rating > 0) changes.push(`Rated (${item.rating}★)`);
 
-  // 2. If item has an exact importBaseline fingerprint, compare deterministically
   if (item.importBaseline) {
     const b = item.importBaseline;
     const currentTitle = (item.title || item.name || '').trim();
-    if (currentTitle !== b.title) return true;
+    if (b.title !== undefined && currentTitle !== b.title) changes.push('Title renamed');
 
-    const currentCollection = item.collectionId || null;
-    if (currentCollection !== b.collectionId) return true;
+    if (b.collectionId !== undefined) {
+      const currentCollection = item.collectionId || null;
+      if (currentCollection !== b.collectionId) changes.push('Collection moved');
+    }
 
-    const currentTagsKey = Array.isArray(item.tags)
-      ? item.tags.slice().map(t => String(t).trim()).sort().join(',')
-      : '';
-    if (currentTagsKey !== b.tagsKey) return true;
+    if (b.tagsKey !== undefined) {
+      const currentTagsKey = Array.isArray(item.tags)
+        ? item.tags.slice().map(t => String(t).trim()).sort().join(',')
+        : '';
+      if (currentTagsKey !== b.tagsKey) changes.push('Tags modified');
+    }
 
     if (Array.isArray(item.chain)) {
-      if (item.chain.length !== b.stepCount) return true;
-      if (b.stepTitlesKey !== undefined) {
+      if (b.stepCount !== undefined && item.chain.length !== b.stepCount) {
+        changes.push('Steps added/removed');
+      } else if (b.stepTitlesKey !== undefined) {
         const currentStepTitlesKey = item.chain.map(s => (s.title || '').trim()).join('\n');
-        if (currentStepTitlesKey !== b.stepTitlesKey) return true;
+        if (currentStepTitlesKey !== b.stepTitlesKey) changes.push('Step titles edited');
       }
     }
 
-    const currentNotes = (item.chain && item.chain.length > 0)
-      ? item.chain.map(s => (s.notes || '').trim()).join('\n')
-      : (item.notes || '').trim();
-    const expectedNotesHash = b.notesHash ?? computeContentHash('');
-    if (computeContentHash(currentNotes) !== expectedNotesHash) return true;
+    if (b.notesHash !== undefined && b.notesHash !== null) {
+      const currentNotes = (item.chain && item.chain.length > 0)
+        ? item.chain.map(s => (s.notes || '').replace(/\r\n/g, '\n').trim()).join('\n')
+        : (item.notes || '').replace(/\r\n/g, '\n').trim();
+      if (computeContentHash(currentNotes) !== b.notesHash) changes.push('Notes updated');
+    }
 
     if (b.presetsHash !== undefined && b.presetsHash !== null) {
       const currentPresetsHash = item.presets ? computeContentHash(JSON.stringify(item.presets)) : null;
-      if (currentPresetsHash !== b.presetsHash) return true;
+      if (currentPresetsHash !== b.presetsHash) changes.push('Presets edited');
     }
 
-    const currentContent = (item.chain && item.chain.length > 0)
-      ? item.chain.map(s => s.content || '').join('\n')
-      : (item.content || '');
-    if (computeContentHash(currentContent) !== b.contentHash) return true;
+    if (b.contentHash !== undefined && b.contentHash !== null) {
+      const currentContent = (item.chain && item.chain.length > 0)
+        ? item.chain.map(s => (s.content || '').replace(/\r\n/g, '\n')).join('\n')
+        : (item.content || '').replace(/\r\n/g, '\n');
+      if (computeContentHash(currentContent) !== b.contentHash) changes.push('Content edited');
+    }
 
-    return false;
+    return changes;
   }
 
-  // 3. Fallback for legacy imports without importBaseline: compare timestamps (> 2s grace window)
-  if (item.updatedAt && item.importedAt) {
-    const diffMs = new Date(item.updatedAt).getTime() - new Date(item.importedAt).getTime();
-    if (diffMs > 2000) return true;
+  // Fallback for legacy imports without importBaseline:
+  if (Array.isArray(item.chain) && item.chain.length > 0) {
+    const hasManualVersions = item.chain.some(s =>
+      Array.isArray(s.versions) && s.versions.some(v => !v.importSessionId && v.note !== 'Initial Auto-Snapshot')
+    );
+    if (hasManualVersions) changes.push('Manual version saved');
   }
 
-  return false;
+  return changes;
+}
+
+/**
+ * Deterministically checks whether a newly imported item was modified, moved,
+ * tagged, pinned, or rated by the user after it was imported.
+ */
+export function isItemModifiedSinceImport(item) {
+  return getItemModifications(item).length > 0;
 }
 
 // Helper um LocalStorage/ChromeStorage für LLMs zu holen
@@ -1276,11 +1293,13 @@ export const backupManager = {
     const modifiedItems = [];
 
     for (const p of sessionPrompts) {
-      if (isItemModifiedSinceImport(p)) {
+      const changes = getItemModifications(p);
+      if (changes.length > 0) {
         modifiedItems.push({
           id: p.id,
           title: p.title || 'Untitled Prompt',
-          updatedAt: p.updatedAt
+          updatedAt: p.updatedAt,
+          changes
         });
       }
     }
