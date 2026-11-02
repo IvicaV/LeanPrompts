@@ -1258,7 +1258,7 @@ export default function Workspace({
                                 </div>
 
                                 <div
-                                    className={`flex flex-col border border-border rounded-t-lg overflow-hidden shadow-sm transition-[min-height,background-color,border-color,box-shadow,transform] duration-300 ease-in-out bg-bg-surface ${maximizedStepId === step.id ? 'min-h-[calc(100vh-56px-var(--ws-header-height,180px)-80px)]' : isOnlyStep ? 'h-[60vh] resize-y' : 'h-[250px] resize-y'
+                                    className={`flex flex-col border border-border rounded-t-lg overflow-hidden shadow-sm transition-[height,min-height,background-color,border-color,box-shadow,transform] duration-300 ease-in-out bg-bg-surface ${maximizedStepId === step.id ? 'h-[calc(100vh-56px-var(--ws-header-height,180px)-80px)] min-h-[250px]' : isOnlyStep ? 'h-[60vh] resize-y' : 'h-[250px] resize-y'
                                         } ${isStepActive || isOnlyStep ? 'step-scroll-active' : 'step-scroll-locked'}`}
                                     style={{ '--ws-header-height': `${wsHeaderHeight}px` }}
                                 >
