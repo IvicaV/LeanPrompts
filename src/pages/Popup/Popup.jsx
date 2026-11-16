@@ -410,6 +410,15 @@ export default function Popup() {
                 const el = document.getElementById(`step-${selectedStepId}`);
                 
                 if (container && el) {
+                    const isFirstStep = !el.previousElementSibling;
+                    if (isFirstStep) {
+                        container.scrollTo({
+                            top: 0,
+                            behavior: 'smooth'
+                        });
+                        return;
+                    }
+
                     const containerRect = container.getBoundingClientRect();
                     const elRect = el.getBoundingClientRect();
                     
@@ -2123,7 +2132,7 @@ export default function Popup() {
                     {/* @PROTECTED_REGION END: Popup UI Architecture */}
 
                 {/* === HEADER === */}
-                <div className={`shrink-0 h-16 px-5 flex items-center justify-between bg-bg-surface z-20 select-none transition-colors duration-200`}>
+                <div className={`shrink-0 h-16 px-5 flex items-center justify-between bg-bg-surface z-20 select-none transition-colors duration-200 ${view === 'fill' ? 'border-b border-border' : ''}`}>
                     <div id="popup-status-chip" onClick={handleLogoClick} className="flex items-center gap-2 cursor-pointer group">
                         {/* Interactive Connection Dot Engine */}
                         <div
@@ -2276,25 +2285,9 @@ export default function Popup() {
                     )}
                 </div>
 
-                {/* === FIXED SEARCH AREA (Integrated Header) === */}
+                {/* === FIXED SEARCH AREA (Integrated Header - List View Only) === */}
+                {view !== 'fill' && (
                 <div className="px-4 pb-2 pt-2 border-b border-border bg-bg-surface/90 dark:bg-zinc-900/30 backdrop-blur-md transition-colors duration-200 z-10 relative">
-                    {view === 'fill' ? (
-                        <SearchInput
-                            id="popup-search-input"
-                            ref={inputRef}
-                            autoFocus
-                            value={search}
-                            onChange={handleSearchChange}
-                            onClear={() => {
-                                setSearch("");
-                                setQuickPrompt("");
-                                setQuickPromptFiles([]);
-                            }}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Search library or type a prompt..."
-                            className="!bg-zinc-100/80 dark:!bg-black/40 !border-zinc-200/80 dark:!border-white/10 hover:!border-zinc-300 dark:hover:!border-white/20 px-4 pl-11 py-2.5 text-[13px] font-medium focus:!border-primary/50 dark:focus:!border-primary/50 focus:!ring-1 focus:!ring-primary/20 shadow-inner transition-all"
-                        />
-                    ) : (
                         <div className="relative group/search z-50">
                             <Search className={`absolute left-3.5 top-3.5 text-text-faint transition-colors pointer-events-none ${search ? 'opacity-40' : ''}`} size={16} />
 
@@ -2418,8 +2411,8 @@ export default function Popup() {
                                 )}
                             </div>
                         </div>
-                    )}
                 </div>
+                )}
 
                 {/* === MAIN CONTENT === */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pt-3 pb-[50vh] scroll-pb-28 scroll-pt-4 bg-zinc-50/50 dark:bg-[#09090b] relative" ref={listRef} style={{ overflowAnchor: 'none', scrollPaddingBottom: '110px', scrollPaddingTop: '16px' }}>
@@ -2494,7 +2487,7 @@ export default function Popup() {
                             )}
 
 
-                            <div className="flex items-center justify-between pb-3 pt-1 border-b border-border">
+                            <div className="flex items-center justify-between pb-3 mb-3 pt-1 border-b border-border">
                                 {/* STEP INDICATOR - HEADER FOR THE INJECTION SECTION */}
                                 <div className="text-xs font-bold text-text-muted flex items-center gap-2.5">
                                     <span className="bg-bg-elevated border border-border px-2 py-1 rounded-md text-text-main shadow-sm transition-all">
