@@ -1535,11 +1535,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   return;
                 }
 
-                // Capture pre-navigation main-frame documentId so the readiness guard never
-                // mistakes the old (pre-commit) document's PONG for the newly loaded page.
-                const prevFrame = await chrome.webNavigation.getFrame({ tabId: targetTab.id, frameId: 0 }).catch(() => null);
-                const prevDocId = prevFrame?.documentId || null;
-
                 if (currentCleanUrl === targetCleanUrl) {
                   chrome.tabs.reload(targetTab.id);
                 } else {
@@ -1590,14 +1585,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   await new Promise(r => setTimeout(r, 1000));
                   while (!isResolved && (Date.now() - pollStart < 8000)) {
                     try {
-                      // Only accept PONG after navigation has committed to a new documentId (when known)
-                      if (prevDocId) {
-                        const curFrame = await chrome.webNavigation.getFrame({ tabId: targetTab.id, frameId: 0 }).catch(() => null);
-                        if (curFrame?.documentId && curFrame.documentId === prevDocId) {
-                          await new Promise(r => setTimeout(r, 300));
-                          continue;
-                        }
-                      }
                       const isReady = await new Promise(resolve => {
                         chrome.tabs.sendMessage(targetTab.id, { action: "PING" }, { frameId: 0 }, (resp) => {
                           if (chrome.runtime.lastError) resolve(false);
