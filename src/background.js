@@ -809,7 +809,7 @@ async function waitForContentScript(tabId, maxWaitMs = 12000) {
   while (Date.now() - start < maxWaitMs) {
     try {
       const isReady = await new Promise(resolve => {
-        chrome.tabs.sendMessage(tabId, { action: "PING" }, (response) => {
+        chrome.tabs.sendMessage(tabId, { action: "PING" }, { frameId: 0 }, (response) => {
           if (chrome.runtime.lastError) resolve(false);
           else resolve(response && (response.status === "PONG" || response.status === "ACK"));
         });
@@ -1139,7 +1139,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       const prompt = await dbAPI.getPrompt(promptId);
       if (prompt) {
         const text = (prompt.chain && prompt.chain.length > 0) ? prompt.chain[0].content : prompt.content;
-        const result = await performInjection(tab.id, { action: "INJECT_PROMPT", text });
+        const result = await performInjection(tab.id, { action: "INJECT_PROMPT_v105", text });
         if (!result.success) {
           console.error("Top Prompt Injection Failed:", result.error);
         }
@@ -1469,6 +1469,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               let shouldResetContext = !!forceNavigate;
               let targetUrl = url;
 
+              // Wake-up guard: If Chromium discarded the background tab (Memory Saver) or it is still loading
+              // after focus/activation, wait for the content script before probing compatibility.
+              const wokenTab = await chrome.tabs.get(targetTab.id).catch(() => targetTab);
+              if (targetTab.discarded || (wokenTab && wokenTab.status === 'loading')) {
+                await waitForContentScript(targetTab.id, 12000);
+              }
+
               if (!shouldResetContext) {
                 await ensureContentScriptActive(targetTab.id);
                 const check = await new Promise(resolve => {
@@ -1489,7 +1496,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 if (isAIStudio) {
                   const isChatPage = targetTab.url.includes('/prompts/') || targetTab.url.includes('/playground');
-                  if (!isChatPage || !check || !check.hasInput) {
+                  // Respect single-click mode: If already on an active AI Studio chat/playground page,
+                  // never force-navigate away to /prompts/new_chat on a slow wake-up. performInjection()
+                  // handles in-place polling up to 25s without destroying the current chat context.
+                  if (!isChatPage && (!check || !check.hasInput)) {
                     shouldResetContext = true;
                     // Upgrade URL to the chat-capable endpoint
                     if (targetUrl === 'https://aistudio.google.com' || targetUrl === 'https://aistudio.google.com/') {
@@ -1501,12 +1511,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
               }
 
+              // Always upgrade bare AI Studio root URL when explicit navigation (e.g. Ctrl+Click) is requested
+              if (shouldResetContext && (targetUrl === 'https://aistudio.google.com' || targetUrl === 'https://aistudio.google.com/')) {
+                targetUrl = 'https://aistudio.google.com/prompts/new_chat';
+              }
+
               if (shouldResetContext) {
-                // ZERO-REGRESSION FIX: SPAs like AI Studio don't reload if the URL only changes query params.
-                // We must force a hard reload to clear the isolated world context (window.__LP_CONTEXT_INVALIDATED).
                 const currentCleanUrl = targetTab.url.split('?')[0].split('#')[0];
                 const targetCleanUrl = targetUrl.split('?')[0].split('#')[0];
                 
+                // ZERO-REGRESSION OPTIMIZATION: If the tab is already on the exact target URL
+                // and the user did not explicitly request a forced reload (forceNavigate),
+                // do NOT reload the heavy SPA. performInjection() already performs adaptive in-place
+                // retries (200 attempts @ 50ms) with zero DOM teardown latency.
+                if (currentCleanUrl === targetCleanUrl && !forceNavigate) {
+                  await waitForContentScript(targetTab.id);
+                  if (!text && (!files || files.length === 0)) {
+                    sendResponse({ success: true, status: "opened" });
+                  } else {
+                    const result = await performInjection(targetTab.id, { action: "INJECT_PROMPT_v105", text, files });
+                    sendResponse(result);
+                  }
+                  return;
+                }
+
+                // Capture pre-navigation main-frame documentId so the readiness guard never
+                // mistakes the old (pre-commit) document's PONG for the newly loaded page.
+                const prevFrame = await chrome.webNavigation.getFrame({ tabId: targetTab.id, frameId: 0 }).catch(() => null);
+                const prevDocId = prevFrame?.documentId || null;
+
                 if (currentCleanUrl === targetCleanUrl) {
                   chrome.tabs.reload(targetTab.id);
                 } else {
@@ -1524,8 +1557,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                   try {
                     // ZERO-REGRESSION FIX: SPA Hydration Buffer
-                    // Gibt dem Browser 800ms Zeit, das alte DOM zu zerstören und die neuen Upload-Buttons 
-                    // von React/Angular rendern zu lassen, bevor der Datei-Injektor sucht.
+                    // Gives the browser 800ms to mount initial components before injection
                     await new Promise(r => setTimeout(r, 800));
 
                     await waitForContentScript(targetTab.id);
@@ -1548,9 +1580,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 };
 
                 chrome.tabs.onUpdated.addListener(listener);
-                // Wachhund: Falls Chrome 'complete' bei SPAs verschluckt.
-                // ZERO-REGRESSION FIX: Entschärft auf 12s, um modernen SPAs Zeit zum Laden zu geben.
-                fallbackTimer = setTimeout(proceedWithInjection, 12000);
+
+                // REACTIVE READINESS GUARD:
+                // SPAs (AI Studio, Gemini) often swallow or delay the 'complete' status event.
+                // Actively poll for content script responsiveness after 1000ms so we don't
+                // sit idle waiting for the full fallback watchdog to expire.
+                (async () => {
+                  const pollStart = Date.now();
+                  await new Promise(r => setTimeout(r, 1000));
+                  while (!isResolved && (Date.now() - pollStart < 8000)) {
+                    try {
+                      // Only accept PONG after navigation has committed to a new documentId (when known)
+                      if (prevDocId) {
+                        const curFrame = await chrome.webNavigation.getFrame({ tabId: targetTab.id, frameId: 0 }).catch(() => null);
+                        if (curFrame?.documentId && curFrame.documentId === prevDocId) {
+                          await new Promise(r => setTimeout(r, 300));
+                          continue;
+                        }
+                      }
+                      const isReady = await new Promise(resolve => {
+                        chrome.tabs.sendMessage(targetTab.id, { action: "PING" }, { frameId: 0 }, (resp) => {
+                          if (chrome.runtime.lastError) resolve(false);
+                          else resolve(resp && (resp.status === "PONG" || resp.status === "ACK"));
+                        });
+                      });
+                      if (isReady && !isResolved) {
+                        proceedWithInjection();
+                        break;
+                      }
+                    } catch (e) { }
+                    await new Promise(r => setTimeout(r, 300));
+                  }
+                })();
+
+                // Hard fallback watchdog: bounded at 8s to guarantee channel closure in deadlock scenarios
+                fallbackTimer = setTimeout(proceedWithInjection, 8000);
               } else {
                 await waitForContentScript(targetTab.id);
                 if (!text && (!files || files.length === 0)) {
@@ -1594,11 +1658,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               }
               
               let isResolved = false;
+              let isAttempting = false;
               let fallbackTimer;
 
               const proceedWithInjection = async () => {
                 // Synchroner Guard gegen doppelte parallele Ausführungen
-                if (isResolved) return;
+                if (isResolved || isAttempting) return;
+                isAttempting = true;
 
                 try {
                   // SPA-Hydrierungs-Puffer abwarten
@@ -1632,6 +1698,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   clearTimeout(fallbackTimer);
                   console.error("LeanPrompts: proceedWithInjection for new tab failed", err);
                   sendResponse({ success: false, error: "Injection failed: " + err.message });
+                } finally {
+                  isAttempting = false;
                 }
               };
 
@@ -1643,14 +1711,38 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               };
               
               chrome.tabs.onUpdated.addListener(listener);
-              // Ultimative Absicherung: Beendet den Kanal nach 12s, falls die Seite gar nicht lädt
+
+              // REACTIVE READINESS GUARD (NEW TAB):
+              // Modern SPAs often delay or swallow 'complete'. Actively poll after 1000ms
+              // so injection proceeds the moment the content script awakens.
+              (async () => {
+                const pollStart = Date.now();
+                await new Promise(r => setTimeout(r, 1000));
+                while (!isResolved && (Date.now() - pollStart < 12000)) {
+                  try {
+                    const isReady = await new Promise(resolve => {
+                      chrome.tabs.sendMessage(tab.id, { action: "PING" }, { frameId: 0 }, (resp) => {
+                        if (chrome.runtime.lastError) resolve(false);
+                        else resolve(resp && (resp.status === "PONG" || resp.status === "ACK"));
+                      });
+                    });
+                    if (isReady && !isResolved) {
+                      proceedWithInjection();
+                      break;
+                    }
+                  } catch (e) { }
+                  await new Promise(r => setTimeout(r, 300));
+                }
+              })();
+
+              // Ultimative Absicherung: Beendet den Kanal nach 15s, falls die Seite gar nicht lädt
               fallbackTimer = setTimeout(() => {
                 if (!isResolved) {
                   isResolved = true;
                   chrome.tabs.onUpdated.removeListener(listener);
                   sendResponse({ success: false, error: "Injection timed out during page load." });
                 }
-              }, 12000);
+              }, 15000);
             }
           }
         } catch (e) {

@@ -39,13 +39,46 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
     }
 
     getInput() {
-        // 1. EXTENDED FAST-PATH: Direct selectors (O(1) performance)
-        // Broader queries to catch modern Angular 18+ Material elements
-        let fastMatch = document.querySelector('ms-prompt-box textarea, ms-text-box textarea, .prompt-box-container textarea') ||
-            document.querySelector('textarea[formcontrolname*="prompt"], textarea[aria-label*="prompt"], textarea[placeholder*="prompt"]') ||
-            document.querySelector('textarea[placeholder*="Type"], textarea[aria-label*="Type"], textarea[placeholder*="Ask"], textarea[aria-label*="Ask"], textarea[placeholder*="Enter"], textarea[aria-label*="Enter"]');
+        const isSystemInstructionEl = (el) => {
+            if (!el) return false;
+            const label = (el.getAttribute('aria-label') || el.placeholder || '').toLowerCase();
+            if (label.includes('system instruction') || label.includes('tone and style')) return true;
+            return !!(el.closest && el.closest('ms-system-instructions, [class*="system-instruction" i]'));
+        };
 
-        if (fastMatch && (fastMatch.offsetWidth > 0 || fastMatch.offsetHeight > 0)) {
+        // 0. PRIMARY DIRECT TARGET (Verified Live DOM: formcontrolname="promptText" inside ms-prompt-box)
+        const promptBoxInput = document.querySelector('ms-prompt-box textarea[formcontrolname="promptText"], textarea[formcontrolname="promptText"]');
+        if (promptBoxInput && !promptBoxInput.disabled && !promptBoxInput.readOnly && (promptBoxInput.offsetWidth > 0 || promptBoxInput.offsetHeight > 0)) {
+            return promptBoxInput;
+        }
+
+        // 1. EXTENDED FAST-PATH: Direct selectors & Web Component Hosts (O(1) performance)
+        // Checks light DOM and direct host shadow roots in <1ms without full DOM traversal
+        // Note: ms-chat-turn excluded so historical turns are never targeted before the active prompt box
+        const hosts = document.querySelectorAll('ms-prompt-box, ms-prompt-input, ms-autosize-textarea, ms-text-box, ms-chunk-editor, ms-text-chunk-editor, .prompt-box-container, .chat-input-container, div.prompt-container');
+        for (let i = hosts.length - 1; i >= 0; i--) {
+            const host = hosts[i];
+            if (host.closest && host.closest('ms-chat-turn, ms-system-instructions')) continue;
+            const light = host.querySelector('textarea, div[contenteditable="true"], [role="textbox"]');
+            if (light && !isSystemInstructionEl(light) && (light.offsetWidth > 0 || light.offsetHeight > 0)) {
+                return light;
+            }
+            if (host.shadowRoot) {
+                const inner = host.shadowRoot.querySelector('textarea, div[contenteditable="true"], [role="textbox"]');
+                if (inner && !isSystemInstructionEl(inner) && (inner.offsetWidth > 0 || inner.offsetHeight > 0)) {
+                    return inner;
+                }
+            }
+        }
+
+        // Broader queries to catch modern Angular 18+ Material elements & Multilingual UI
+        let fastMatch = document.querySelector('ms-prompt-box textarea, ms-prompt-input textarea, ms-text-box textarea, .prompt-box-container textarea, ms-autosize-textarea textarea, ms-chunk-editor textarea') ||
+            document.querySelector('textarea[aria-label*="prompt" i], textarea[placeholder*="prompt" i], textarea[formcontrolname*="prompt"]') ||
+            document.querySelector('textarea[aria-label*="Type" i], textarea[placeholder*="Type" i], textarea[aria-label*="Ask" i], textarea[placeholder*="Ask" i], textarea[aria-label*="Enter" i], textarea[placeholder*="Enter" i]') ||
+            document.querySelector('textarea[aria-label*="Eingabe" i], textarea[placeholder*="Eingabe" i], textarea[aria-label*="Frage" i], textarea[placeholder*="Frage" i], textarea[aria-label*="Nachricht" i], textarea[placeholder*="Nachricht" i]') ||
+            document.querySelector('textarea.cdk-textarea-autosize:not([aria-label*="System instructions" i]), textarea.textarea:not([aria-label*="System instructions" i])');
+
+        if (fastMatch && !isSystemInstructionEl(fastMatch) && (fastMatch.offsetWidth > 0 || fastMatch.offsetHeight > 0)) {
             return fastMatch;
         }
 
@@ -56,7 +89,7 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
         if (now - this._lastDeepScanTime < 400) {
             // CRITICAL: document.body.contains() fails on Shadow DOM nodes.
             // Using .isConnected is the only reliable way to verify node attachment.
-            if (this._cachedDeepScanResult && this._cachedDeepScanResult.isConnected) {
+            if (this._cachedDeepScanResult && this._cachedDeepScanResult.isConnected && !isSystemInstructionEl(this._cachedDeepScanResult)) {
                 return this._cachedDeepScanResult;
             }
             return null; // Return null safely, let the polling loop breathe
@@ -64,13 +97,13 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
         this._lastDeepScanTime = now;
 
         // 3. DEEP SCAN: Pierce Shadow DOMs
-        // Broadened to catch any interactive textarea, bypassing specific attribute checks 
-        // that Google frequently changes.
-        const candidates = findAllElementsDeep(document, el => el.tagName === 'TEXTAREA');
+        // Broadened to catch any interactive textarea or editable element
+        const candidates = findAllElementsDeep(document, el => el.tagName === 'TEXTAREA' || (el.isContentEditable && el.getAttribute('role') === 'textbox'));
 
-        // Filter out hidden or disabled textareas
+        // Filter out hidden, disabled, or System Instruction textareas
         const validInputs = candidates.filter(el => {
             if (el.disabled || el.readOnly || el.getAttribute('aria-disabled') === 'true') return false;
+            if (isSystemInstructionEl(el)) return false;
             const style = window.getComputedStyle(el);
             if (style.display === 'none' || style.visibility === 'hidden') return false;
             if (el.offsetWidth === 0 || el.offsetHeight === 0) return false;
@@ -78,29 +111,43 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
         });
 
         if (validInputs.length > 0) {
-            // Priority: Context hints in attributes or parent containers
-            const mainInput = validInputs.find(el => {
+            // Priority: Context hints in attributes or parent containers (iterate from bottom/latest to top)
+            const reversedInputs = [...validInputs].reverse();
+            const mainInput = reversedInputs.find(el => {
                 const attrText = (el.getAttribute('formcontrolname') || el.getAttribute('aria-label') || el.placeholder || '').toLowerCase();
-                if (attrText.includes('prompt') || attrText.includes('type') || attrText.includes('ask') || attrText.includes('enter') || attrText.includes('user')) {
+                if (attrText.includes('prompt') || attrText.includes('type') || attrText.includes('ask') || attrText.includes('enter') || attrText.includes('user') ||
+                    attrText.includes('chat') || attrText.includes('message') || attrText.includes('query') || attrText.includes('input') ||
+                    attrText.includes('eingabe') || attrText.includes('frage') || attrText.includes('nachricht') || attrText.includes('text')) {
                     return true;
                 }
                 
-                // Check parent tree for semantic clues
-                let parent = el.parentElement;
+                // Check parent tree for semantic clues (including shadow root boundary host)
+                let parent = el.parentElement || (el.getRootNode && el.getRootNode().host);
                 let depth = 0;
-                while (parent && depth < 3) {
-                    const cls = parent.className || "";
-                    if (typeof cls === 'string' && (cls.includes('prompt') || cls.includes('chat') || cls.includes('input'))) {
+                while (parent && depth < 4) {
+                    const cls = typeof parent.className === 'string' ? parent.className.toLowerCase() : "";
+                    const tag = (parent.tagName || "").toLowerCase();
+                    if (tag === 'ms-system-instructions' || tag === 'ms-chat-turn') return false;
+                    if (cls.includes('prompt') || cls.includes('chat') || cls.includes('input') || tag.startsWith('ms-') || tag.includes('prompt') || tag.includes('chat')) {
                         return true;
                     }
-                    parent = parent.parentElement;
+                    parent = parent.parentElement || (parent.getRootNode && parent.getRootNode().host);
                     depth++;
                 }
                 return false;
             });
 
-            this._cachedDeepScanResult = mainInput || validInputs[0];
+            this._cachedDeepScanResult = mainInput || reversedInputs[0];
             return this._cachedDeepScanResult;
+        }
+
+        // 4. FAILSAFE FALLBACK: Heuristic DOM scan via findBestTextInput
+        // Ensures that even if Google dynamically changes web-component tags,
+        // the main prompt area is discovered immediately in <15ms instead of timing out.
+        const heuristicMatch = findBestTextInput();
+        if (heuristicMatch && !isSystemInstructionEl(heuristicMatch)) {
+            this._cachedDeepScanResult = heuristicMatch;
+            return heuristicMatch;
         }
 
         this._cachedDeepScanResult = null;

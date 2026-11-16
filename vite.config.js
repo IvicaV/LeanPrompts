@@ -1,11 +1,14 @@
+import fs from 'fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { crx, defineManifest } from '@crxjs/vite-plugin'
 
+const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+
 const manifest = defineManifest({
   manifest_version: 3,
   name: "LeanPrompts Studio - AI Prompt IDE",
-  version: "1.1.1",
+  version: pkg.version,
   author: "Ivica Vrgoc",
   description: "Professional, local-first development environment for AI prompts.",
   permissions: [
@@ -104,7 +107,11 @@ const manifest = defineManifest({
 })
 const injectScriptsPlugin = () => ({
   name: 'inject-scripts',
-  transformIndexHtml(html) {
+  transformIndexHtml(html, ctx) {
+    // In dev mode (ctx.server is defined), don't inject the /public script tag because Vite/CRXJS fails on /public scripts during HMR
+    if (ctx && ctx.server) {
+      return html.replace('<!-- INJECT_SCRIPTS -->', '');
+    }
     return html.replace(
       '<!-- INJECT_SCRIPTS -->',
       '<script src="/themePreload.js"></script>'
@@ -143,6 +150,7 @@ export default defineConfig({
     },
   },
   build: {
+    emptyOutDir: true, // Garantiert vollständige Leerung von dist/ vor jedem Produktions-Build
     sourcemap: false, // Keine Sourcemaps im Store-Build (erhöht Sicherheit und Datenschutz)
     minify: 'esbuild', // Standard-Minifizierung von Vite (CWS-konform, keine riskante Obfuszierung)
     chunkSizeWarningLimit: 2000,

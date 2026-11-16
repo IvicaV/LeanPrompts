@@ -461,7 +461,8 @@ try {
           isSupported: true,
           hasInput: true,
           name: "Manual Connection",
-          isManual: true
+          isManual: true,
+          version: "1.0.5-FIX"
         });
         return false;
       }
@@ -744,18 +745,18 @@ try {
             }
 
             // 2. Optimized Discovery: Prioritize direct adapter query
-            // Avoid calling findBestTextInput (which scans the whole DOM) on every polling tick
             if (adapter) {
               const el = adapter.getInput();
               if (el) {
                 const style = window.getComputedStyle(el);
                 if (style.display !== 'none' && style.visibility !== 'hidden') return el;
               }
-            } else {
-              // Only run global heuristic search if no specific adapter is available
-              const el = findBestTextInput();
-              if (el) return el;
             }
+            
+            // Failsafe Fallback: If adapter query returned null, fall back to heuristic discovery
+            // so the injection never stalls in a 25-second polling timeout!
+            const fallbackEl = findBestTextInput();
+            if (fallbackEl) return fallbackEl;
 
             // 3. Progressive Feedback (Spinner stays active during connection)
             const timeElapsed = Date.now() - isProcessing.startTime;
