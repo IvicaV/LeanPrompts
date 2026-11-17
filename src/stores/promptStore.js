@@ -454,6 +454,7 @@ const usePromptStore = create((set, get) => ({
 
   deletePrompt: async (id) => {
     await dbAPI.deletePrompt(id);
+    dbAPI.deleteSessionCache(id).catch(() => {});
     set(state => ({ 
       prompts: state.prompts.filter((p) => p.id !== id),
       activePromptId: state.activePromptId === id ? null : state.activePromptId 
@@ -496,6 +497,7 @@ const usePromptStore = create((set, get) => ({
 
   bulkDeletePrompts: async (ids) => {
     await Promise.all(ids.map(id => dbAPI.deletePrompt(id)));
+    Promise.all(ids.map(id => dbAPI.deleteSessionCache(id))).catch(() => {});
     set(state => ({
       prompts: state.sortPrompts(state.prompts.filter(p => !ids.includes(p.id)), state.sortMode),
       activePromptId: ids.includes(state.activePromptId) ? null : state.activePromptId

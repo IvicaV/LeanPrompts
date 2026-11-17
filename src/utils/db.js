@@ -108,6 +108,7 @@ export const dbAPI = {
     return entry?.data || null;
   },
 
+  async deleteSessionCache(id) { if (!id) return; const db = await initDB(); return db.delete('session_cache', id); },
   async clearSessionCache() {
     const db = await initDB();
     return db.clear('session_cache');

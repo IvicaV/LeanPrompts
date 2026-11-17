@@ -761,7 +761,7 @@ export default function Popup() {
     };
 
     // Helper: Save session (Text + Files per step)
-    const saveSessionData = async (vars, currentStepFiles, promptId, forceSave = false) => {
+    const saveSessionData = async (vars, currentStepFiles, promptId, forceSave = false, skipFiles = false) => {
         if ((!keepValues && !forceSave) || !promptId) return;
 
         try {
@@ -773,6 +773,16 @@ export default function Popup() {
                         serializableVars[key] = vars[key];
                     }
                 });
+            }
+
+            if (skipFiles) {
+                await chrome.storage.local.set({
+                    lp_last_session: {
+                        promptId: promptId,
+                        values: serializableVars,
+                    }
+                });
+                return;
             }
 
             // 2. Serialization of files per step (and file-variables) to Base64 for storage
@@ -1566,7 +1576,8 @@ export default function Popup() {
         }
 
         setVariableValues(newValues);
-        saveSessionData(newValues, stepFiles, selectedPrompt?.id);
+        const isFileVarChange = cleanKey.startsWith('file:');
+        saveSessionData(newValues, stepFiles, selectedPrompt?.id, false, !isFileVarChange);
 
         // --- ZERO-REGRESSION LIVE SYNC BROADCAST ---
         if (liveSyncTimer.current) clearTimeout(liveSyncTimer.current);
