@@ -7,9 +7,9 @@
  * @license      AGPL-3.0
  * ============================================================================
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Type, ListFilter, FolderUp, Zap, X, Copy, Check, Sparkles, Trash2, Plus } from 'lucide-react';
+import { Type, ListFilter, FolderUp, Zap, X, Copy, Check, Sparkles, Trash2, Plus, GripVertical } from 'lucide-react';
 import { copyToClipboard } from '../utils/clipboard';
 import { parseVariableDefinition } from '../utils/variableParser';
 
@@ -29,10 +29,20 @@ export default function VariableHelperModal({
     const [includePrefix, setIncludePrefix] = useState(false);
     const [selectedMacro, setSelectedMacro] = useState('$date');
     const [copied, setCopied] = useState(false);
+    const [draggedIdx, setDraggedIdx] = useState(null);
+    const draggedIdxRef = useRef(null);
+    const optionRowRefs = useRef([]);
+    const optionInputRefs = useRef([]);
+    const optionsListRef = useRef(null);
+    const shouldFocusNewOption = useRef(false);
 
     // Synchronize state when modal opens or initialData changes
     useEffect(() => {
         if (!isOpen) return;
+
+        draggedIdxRef.current = null;
+        setDraggedIdx(null);
+        shouldFocusNewOption.current = false;
 
         if (initialData?.raw) {
             const parsed = parseVariableDefinition(initialData.raw);
@@ -54,6 +64,99 @@ export default function VariableHelperModal({
             setSelectedMacro('$date');
         }
     }, [isOpen, initialData]);
+
+    // Auto-focus and smooth-scroll to the newly added option after clicking "+ Add another option"
+    useEffect(() => {
+        if (shouldFocusNewOption.current && options.length > 0) {
+            shouldFocusNewOption.current = false;
+            const lastIndex = options.length - 1;
+            const targetInput = optionInputRefs.current[lastIndex];
+            if (targetInput) {
+                targetInput.focus({ preventScroll: true });
+            }
+            if (optionsListRef.current) {
+                optionsListRef.current.scrollTo({
+                    top: optionsListRef.current.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+        }
+    }, [options.length]);
+
+    const isDraggingOption = draggedIdx !== null;
+
+    useEffect(() => {
+        if (!isDraggingOption) return;
+
+        const handlePointerMove = (e) => {
+            const currentIdx = draggedIdxRef.current;
+            if (currentIdx === null) return;
+
+            if (optionsListRef.current) {
+                const listRect = optionsListRef.current.getBoundingClientRect();
+                if (e.clientY < listRect.top + 24) {
+                    optionsListRef.current.scrollTop -= 6;
+                } else if (e.clientY > listRect.bottom - 24) {
+                    optionsListRef.current.scrollTop += 6;
+                }
+            }
+
+            const rows = optionRowRefs.current;
+            let targetIdx = null;
+
+            for (let i = 0; i < rows.length; i++) {
+                const rowEl = rows[i];
+                if (!rowEl || !rowEl.isConnected || i === currentIdx) continue;
+                const rect = rowEl.getBoundingClientRect();
+                const edgeOffset = rect.height * 0.12;
+
+                if (i < currentIdx && e.clientY < rect.bottom - edgeOffset) {
+                    targetIdx = i;
+                    break;
+                }
+                if (i > currentIdx && e.clientY > rect.top + edgeOffset) {
+                    targetIdx = i;
+                }
+            }
+
+            if (targetIdx !== null && targetIdx !== currentIdx) {
+                draggedIdxRef.current = targetIdx;
+                setDraggedIdx(targetIdx);
+                setOptions((prev) => {
+                    if (currentIdx < 0 || currentIdx >= prev.length || targetIdx < 0 || targetIdx >= prev.length) {
+                        return prev;
+                    }
+                    const updated = [...prev];
+                    const [movedItem] = updated.splice(currentIdx, 1);
+                    updated.splice(targetIdx, 0, movedItem);
+                    return updated;
+                });
+            }
+        };
+
+        const handlePointerEnd = () => {
+            draggedIdxRef.current = null;
+            setDraggedIdx(null);
+        };
+
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerEnd);
+        window.addEventListener('pointercancel', handlePointerEnd);
+
+        return () => {
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerEnd);
+            window.removeEventListener('pointercancel', handlePointerEnd);
+        };
+    }, [isDraggingOption]);
+
+    const handleOptionPointerDown = (e, index) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        draggedIdxRef.current = index;
+        setDraggedIdx(index);
+    };
 
     // Syntax-Generator
     const cleanName = name.trim();
@@ -233,14 +336,38 @@ export default function VariableHelperModal({
 
                     {activeTab === 'dropdown' && (
                         <div className="space-y-3">
-                            <label className="block text-xs font-bold text-text-main">
-                                Dropdown Options
-                            </label>
-                            <div className="space-y-2 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
+                            <div className="flex items-center justify-between">
+                                <label className="block text-xs font-bold text-text-main">
+                                    Dropdown Options
+                                </label>
+                                <span className="text-[10px] text-text-muted">Drag handle to reorder</span>
+                            </div>
+                            <div
+                                ref={optionsListRef}
+                                className={`space-y-2 max-h-[160px] overflow-y-auto custom-scrollbar pr-1 ${
+                                    isDraggingOption ? 'select-none cursor-grabbing' : ''
+                                }`}
+                            >
                                 {options.map((opt, idx) => (
-                                    <div key={idx} className="flex items-center gap-2">
+                                    <div
+                                        key={idx}
+                                        ref={(el) => (optionRowRefs.current[idx] = el)}
+                                        className="flex items-center gap-1.5 rounded-xl"
+                                    >
+                                        <div
+                                            onPointerDown={(e) => handleOptionPointerDown(e, idx)}
+                                            className={`p-1 shrink-0 select-none touch-none transition-colors ${
+                                                draggedIdx === idx
+                                                    ? 'text-primary cursor-grabbing'
+                                                    : 'text-text-faint hover:text-text-main cursor-grab active:cursor-grabbing'
+                                            }`}
+                                            title="Drag to reorder"
+                                        >
+                                            <GripVertical size={14} />
+                                        </div>
                                         <div className="relative flex-1">
                                             <input
+                                                ref={(el) => (optionInputRefs.current[idx] = el)}
                                                 type="text"
                                                 value={opt}
                                                 onChange={(e) => {
@@ -249,7 +376,11 @@ export default function VariableHelperModal({
                                                     setOptions(updated);
                                                 }}
                                                 placeholder={`Option ${idx + 1}...`}
-                                                className="w-full py-2.5 pl-3.5 pr-16 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-2 border-transparent focus:border-primary text-xs text-text-main outline-none transition-colors"
+                                                className={`w-full py-2.5 pl-3.5 pr-16 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-2 text-xs text-text-main outline-none transition-colors ${
+                                                    draggedIdx === idx
+                                                        ? 'border-primary bg-primary-subtle/40'
+                                                        : 'border-transparent focus:border-primary'
+                                                }`}
                                             />
                                             {idx === 0 && (
                                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase tracking-wider text-primary pointer-events-none">
@@ -261,7 +392,9 @@ export default function VariableHelperModal({
                                             <button
                                                 type="button"
                                                 onClick={() => setOptions(options.filter((_, i) => i !== idx))}
-                                                className="p-2 text-text-muted hover:text-red-400 rounded-lg transition-colors shrink-0"
+                                                className={`p-2 text-text-muted hover:text-red-400 rounded-lg transition-colors shrink-0 ${
+                                                    isDraggingOption ? 'pointer-events-none' : ''
+                                                }`}
                                                 title="Remove option"
                                             >
                                                 <Trash2 size={14} />
@@ -272,7 +405,10 @@ export default function VariableHelperModal({
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setOptions([...options, ''])}
+                                onClick={() => {
+                                    shouldFocusNewOption.current = true;
+                                    setOptions([...options, '']);
+                                }}
                                 className="text-xs font-bold text-primary hover:text-primary-hover flex items-center gap-1.5 py-1 px-1 transition-colors"
                             >
                                 <Plus size={14} /> Add another option

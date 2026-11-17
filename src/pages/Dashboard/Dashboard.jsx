@@ -1360,6 +1360,11 @@ const initiateWorkflow = async (promptId) => {
     // Nutzt die 'activeStateRef', um den absolut neusten Prompt direkt aus dem Store 
     // zu erzwingen. Dies verhindert, dass asynchrone React-Render-Zyklen (z.B. durch 
     // gleichzeitiges Tippen) die Ignorier-Liste mit alten Daten überschreiben.
+
+    // Ausstehenden Editor-Debounce zuerst synchron speichern, damit der folgende
+    // Store-Read den neuesten Text enthält (identischer Pfad wie beim Kontextwechsel).
+    flushPendingSave();
+
     const currentPromptId = activeStateRef.current.promptId;
     const latestPrompt = usePromptStore.getState().prompts.find(p => p.id === currentPromptId);
     if (!latestPrompt) return;
@@ -1374,6 +1379,42 @@ const initiateWorkflow = async (promptId) => {
       currentTexts.forEach(t => {
         if (!newIgnored.includes(t)) newIgnored.push(t);
       });
+
+      // VIEWPORT-GAP FIX: Der Editor scannt aus Performance-Gründen nur den sichtbaren
+      // Bereich. "Dismiss all" erfasst daher zusätzlich alle Kandidaten im gesamten
+      // Prompt (alle Steps), damit sie beim Scrollen/Step-Wechsel nicht erneut auftauchen.
+      // Läuft ausschließlich beim Klick. Heuristiken spiegeln PromptEditor.scanForSuggestions,
+      // sind aber strenger (nie innerhalb von {{...}}), damit compilePrompt unberührt bleibt.
+      // Defensiv: Bei jedem Fehler bleibt es beim bisherigen Verhalten (nur sichtbare Vorschläge).
+      try {
+        const regex = /(\[\[.*?\]\]|\[[^\]]+\]|\{([^\{}]+)\})/g;
+        const textsToScan = (latestPrompt.chain || []).map(s => (s && typeof s.content === 'string') ? s.content : '');
+        for (const text of textsToScan) {
+          if (!text) continue;
+          regex.lastIndex = 0;
+          let match;
+          while ((match = regex.exec(text)) !== null) {
+            const val = match[0];
+            const start = match.index;
+            const end = start + val.length;
+            const charBefore = text[start - 1];
+            const charAfter = text[end];
+
+            if (charBefore === '{' || charAfter === '}') continue; // nie innerhalb von {{...}}
+            if (charBefore === '@') continue; // Snippets
+            if (val.startsWith('[') && !val.startsWith('[[') && charAfter === '(') continue; // Markdown-Links
+            if (val.startsWith('[[') && val.endsWith(']]')) continue; // WikiLinks
+            if (val.startsWith('{') && (val.includes('"') || val.includes("'") || val.includes(':') || val.includes(';') || val.includes('='))) continue; // Code/JSON
+            if (val.length > 50 || val.includes('\n')) continue;
+            const innerText = val.replace(/^\[+|\]+$/g, '').replace(/^\{+|\}+$/g, '').trim();
+            if (innerText.length === 0) continue;
+
+            if (!newIgnored.includes(val)) newIgnored.push(val);
+          }
+        }
+      } catch (err) {
+        console.warn("LeanPrompts: Full-prompt suggestion scan skipped", err);
+      }
     }
 
     usePromptStore.getState().savePrompt({ ...latestPrompt, ignoredVariables: newIgnored });

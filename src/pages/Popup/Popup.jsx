@@ -1949,6 +1949,14 @@ export default function Popup() {
             updatedAt: new Date().toISOString()
         };
 
+        // STALE-COPY FIX: 'prompt' kann eine ältere lokale Kopie sein. Nur ignoredVariables
+        // aus dem aktuellen Store übernehmen, damit im Dashboard ignorierte Vorschläge nicht
+        // überschrieben werden. Alle anderen Felder bleiben exakt wie bisher.
+        try {
+            const latestIgnored = usePromptStore.getState().prompts?.find(p => p.id === prompt.id)?.ignoredVariables;
+            if (Array.isArray(latestIgnored)) updated.ignoredVariables = latestIgnored;
+        } catch (err) { /* Fallback: bisheriges Verhalten */ }
+
         if (editingStepId) {
             // Update specific step in the chain
             const newChain = prompt.chain.map(s =>
@@ -3383,11 +3391,11 @@ export default function Popup() {
                     </div >
 
                     {/* 3. FOOTER LINKS (Updated: Lighter Text) */}
-                    < div className="pb-3 pt-0 flex justify-center items-center gap-4 text-[10px] select-none opacity-80 hover:opacity-100 transition-opacity" >
-                        <a href="https://github.com/IvicaV/LeanPrompts" target="_blank" className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors">
-                            <Github size={10} /> About
+                    < div className="pb-3 pt-0 flex justify-center items-center gap-4 text-xs font-medium select-none opacity-80 hover:opacity-100 transition-opacity" >
+                        <a href="https://github.com/IvicaV/LeanPrompts" target="_blank" className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors">
+                            <Github size={12} /> About
                         </a>
-                        <div className="text-zinc-700">|</div>
+                        <div className="text-zinc-300 dark:text-zinc-700">|</div>
                         <div
                             onClick={() => {
                                 // Open Dashboard with feedback signal (full-screen modal experience)
@@ -3406,13 +3414,13 @@ export default function Popup() {
                                     }
                                 });
                             }}
-                            className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+                            className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors cursor-pointer"
                         >
-                            <MessageSquare size={10} /> Support
+                            <MessageSquare size={12} /> Support
                         </div>
-                        <div className="text-zinc-700">|</div>
-                        <a href="https://ko-fi.com/ivicav" target="_blank" className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors">
-                            <Coffee size={10} /> Coffee
+                        <div className="text-zinc-300 dark:text-zinc-700">|</div>
+                        <a href="https://ko-fi.com/ivicav" target="_blank" className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors">
+                            <Coffee size={12} /> Coffee
                         </a>
                     </div >
                 </div >
