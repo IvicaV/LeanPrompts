@@ -2977,11 +2977,21 @@ export default function Popup() {
                             />
                         </>
                     ) : filteredPrompts.length === 0 && !search ? (
-                        /* EMPTY STATE (Initial) */
-                        <div className="h-full flex flex-col items-center justify-center text-text-faint gap-4 opacity-50 animate-fade-in">
-                            <Command size={48} strokeWidth={1} />
-                            <span className="text-sm font-medium">No prompts loaded.</span>
-                        </div>
+                        /* EMPTY / LOADING STATE (Initial) */
+                        store.isLoading ? (
+                            <div className="h-full flex flex-col items-center justify-center gap-4 animate-fade-in">
+                                <div className="w-10 h-10 relative">
+                                    <div className="absolute inset-0 border-[3px] border-primary/20 rounded-xl" />
+                                    <div className="absolute inset-0 border-[3px] border-t-primary rounded-xl animate-spin" />
+                                </div>
+                                <span className="text-[11px] text-text-muted font-medium uppercase tracking-widest animate-pulse">Loading Library...</span>
+                            </div>
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-text-faint gap-4 opacity-50 animate-fade-in">
+                                <Command size={48} strokeWidth={1} />
+                                <span className="text-sm font-medium">No prompts loaded.</span>
+                            </div>
+                        )
 
                     ) : (
                         /* LIST MODE */
