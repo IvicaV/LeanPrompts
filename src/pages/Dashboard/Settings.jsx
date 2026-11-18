@@ -1156,7 +1156,7 @@ export default function Settings({ onViewChange }) {
                                 className="hidden"
                             />
                             <Upload size={24} className="mb-3 text-text-muted group-hover:text-primary transition-colors" />
-                            <span className="font-semibold text-text-main">Import Backup</span>
+                            <span className="font-semibold text-text-main">Import Backup / Workflow</span>
                             <span className="text-xs text-text-muted mt-1">Drag & Drop JSON</span>
                         </label>
                     </div>
@@ -1212,7 +1212,7 @@ export default function Settings({ onViewChange }) {
                                 <div key={session.id} className="p-4 flex items-center justify-between hover:bg-bg-elevated/50 transition-colors group/item">
                                     <div>
                                         <h4 className="font-bold text-sm text-text-main flex items-center gap-2">
-                                            <Package size={14} className="text-indigo-400 opacity-80" />
+                                            <Package size={14} className="text-indigo-400 opacity-80 shrink-0" />
                                             {session.bundleName}
                                         </h4>
                                         <p className="text-xs text-text-muted mt-1 font-mono">
