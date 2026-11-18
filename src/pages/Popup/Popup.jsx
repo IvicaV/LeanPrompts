@@ -1576,7 +1576,7 @@ export default function Popup() {
         }
 
         setVariableValues(newValues);
-        const isFileVarChange = cleanKey.startsWith('file:');
+        const isFileVarChange = cleanKey.toLowerCase().startsWith('file:');
         saveSessionData(newValues, stepFiles, selectedPrompt?.id, false, !isFileVarChange);
 
         // --- ZERO-REGRESSION LIVE SYNC BROADCAST ---

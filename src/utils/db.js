@@ -109,6 +109,7 @@ export const dbAPI = {
   },
 
   async deleteSessionCache(id) { if (!id) return; const db = await initDB(); return db.delete('session_cache', id); },
+  async cleanupOrphanedSessionCache() { const db = await initDB(); const tx = db.transaction(['prompts', 'session_cache'], 'readwrite'); const validIds = new Set(await tx.objectStore('prompts').getAllKeys()); if (validIds.size > 0) { const cacheKeys = await tx.objectStore('session_cache').getAllKeys(); const orphans = cacheKeys.filter(k => k !== 'quick' && !validIds.has(k)); if (orphans.length > 0) { await Promise.all(orphans.map(k => tx.objectStore('session_cache').delete(k))); } } await tx.done; },
   async clearSessionCache() {
     const db = await initDB();
     return db.clear('session_cache');

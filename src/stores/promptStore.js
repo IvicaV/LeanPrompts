@@ -156,6 +156,7 @@ const usePromptStore = create((set, get) => ({
 
       const initialSortMode = storageData.lp_sort_mode || 'updated';
       const initialSnippetSortMode = storageData.lp_snippet_sort_mode || 'updated';
+      if (!get()._hasCleanedOrphans && rawPrompts.length > 0 && !get().isSyncing) { set({ _hasCleanedOrphans: true }); setTimeout(() => { if (!get().isSyncing) dbAPI.cleanupOrphanedSessionCache().catch(() => {}); }, 2000); }
 
       // --- MIGRATION: Knowledge Base (Storage -> IndexedDB) ---
       let knowledge = indexedKnowledge || [];
