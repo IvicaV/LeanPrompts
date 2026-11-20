@@ -412,10 +412,20 @@ export default function SnippetLibrary({
             if (originalName && data.editName !== originalName && !originalName.startsWith("NewSnippet")) {
                 return; 
             }
+
+            const trimmedName = data.editName.trim();
+            // Collision Guard: Never auto-save a duplicate snippet name (prevents unique-index rollback & originalName poisoning)
+            const currentSnippets = usePromptStore.getState().snippets || [];
+            const nameExists = currentSnippets.some(
+                s => s.name?.toLowerCase() === trimmedName.toLowerCase() && s.id !== data.activeSnippetId
+            );
+            if (nameExists) {
+                return;
+            }
             
             saveSnippet({
                 id: data.activeSnippetId,
-                name: data.editName.trim(),
+                name: trimmedName,
                 content: data.editContent,
                 tags: data.editTags,
                 collectionId: data.editCollectionId
@@ -490,6 +500,7 @@ export default function SnippetLibrary({
         setEditName(finalName);
         setOriginalName(finalName);
         setEditContent("");
+        lastTypedSnippetContent.current = "";
         setEditTags([]);
         setEditCollectionId(activeCollectionId || null);
         
@@ -545,7 +556,8 @@ export default function SnippetLibrary({
             }
             // ----------------------------
 
-            if (!oldName.startsWith("NewSnippet")) {
+            const existingSnippet = snippets.find(s => s.id === currentId);
+            if (existingSnippet && existingSnippet.name === oldName && !oldName.startsWith("NewSnippet")) {
                 const usages = checkSnippetUsage(oldName);
                 if (usages.length > 0) {
                     hasUnsavedChanges.current = false; // Pause auto-save
