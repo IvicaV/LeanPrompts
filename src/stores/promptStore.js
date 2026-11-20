@@ -1487,11 +1487,17 @@ const usePromptStore = create((set, get) => ({
 
   deleteKnowledgeTile: async (id) => {
     await dbAPI.deleteKnowledge(id);
+    if (id === 'guide-master' && typeof chrome !== 'undefined' && chrome.storage?.local) {
+      await chrome.storage.local.set({ lp_guide_master_dismissed: true }).catch(() => {});
+    }
     set(state => ({ knowledgeTiles: state.knowledgeTiles.filter(t => t.id !== id) }));
   },
 
   bulkDeleteKnowledgeTiles: async (ids) => {
     await dbAPI.bulkDeleteKnowledge(ids);
+    if (Array.isArray(ids) && ids.includes('guide-master') && typeof chrome !== 'undefined' && chrome.storage?.local) {
+      await chrome.storage.local.set({ lp_guide_master_dismissed: true }).catch(() => {});
+    }
     set(state => ({ knowledgeTiles: state.knowledgeTiles.filter(t => !ids.includes(t.id)) }));
   },
 
@@ -1507,6 +1513,7 @@ const usePromptStore = create((set, get) => ({
         'lp_settings',
         'lp_onboarding_popup_done',
         'lp_onboarding_dashboard_done',
+        'lp_guide_master_dismissed',
         'lp_theme',
         'lp_saved_drafts',
         'lp_quick_prompt_draft',

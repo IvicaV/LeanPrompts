@@ -1023,7 +1023,14 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    chrome.storage.local.get(['lp_knowledge_tiles', 'lp_prompts', 'lp_snippets', 'lp_settings'], (result) => {
+    if (isLoading) return;
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+
+    let isCancelled = false;
+    chrome.storage.local.get(['lp_guide_master_dismissed'], (result) => {
+      if (isCancelled || chrome.runtime?.lastError) return;
+      if (result?.lp_guide_master_dismissed) return;
+
       // DEFINE MASTER CONTENT
       const masterGuide = {
         id: 'guide-master',
@@ -1150,7 +1157,11 @@ const initiateWorkflow = async (promptId) => {
         }
       }
     });
-  }, [knowledgeTiles, saveKnowledgeTile]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isLoading, knowledgeTiles, saveKnowledgeTile]);
 
   // (REMOVED: Synced via promptStore now)
 
