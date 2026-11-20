@@ -113,6 +113,10 @@ export default function Dashboard() {
 
   // Local title state to prevent cursor jumping
   const [localTitle, setLocalTitle] = useState("");
+  const titleDirtyRef = useRef(false);
+  const acknowledgedDuplicateTitleRef = useRef({ promptId: null, title: null });
+  const [duplicateTitleModal, setDuplicateTitleModal] = useState(null);
+  const [duplicateTitleOption, setDuplicateTitleOption] = useState('rename'); // 'rename' | 'keep'
 
   // Local state for step titles to prevent cursor jumping
   const [localStepTitles, setLocalStepTitles] = useState({});
@@ -714,6 +718,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (activePrompt) {
       setLocalTitle(activePrompt.title);
+      titleDirtyRef.current = false;
       const titles = {};
       activePrompt.chain?.forEach(s => {
         titles[s.id] = s.title;
@@ -2617,6 +2622,7 @@ const initiateWorkflow = async (promptId) => {
     if (!activePrompt) return;
     const val = e.target.value;
     setLocalTitle(val);
+    titleDirtyRef.current = true;
     setEditing(true);
     if (titleDebounceTimer.current) clearTimeout(titleDebounceTimer.current);
     if (isSyncing) return;
@@ -2632,17 +2638,44 @@ const initiateWorkflow = async (promptId) => {
   };
 
   const handleTitleBlur = () => {
-    if (!activePromptId) return;
+    if (!activePromptId || !titleDirtyRef.current) return;
+    titleDirtyRef.current = false;
     const trimmed = (localTitle || "").trim();
     if (!trimmed || trimmed.toLowerCase() === "untitled prompt") return;
+
+    const normalized = trimmed.toLowerCase();
+    if (
+      acknowledgedDuplicateTitleRef.current.promptId === activePromptId &&
+      acknowledgedDuplicateTitleRef.current.title === normalized
+    ) {
+      return;
+    }
+
     const currentPrompts = usePromptStore.getState().prompts || [];
-    const hasDuplicate = currentPrompts.some(
-      p => p.id !== activePromptId && (p.title || "").trim().toLowerCase() === trimmed.toLowerCase()
+    const duplicates = currentPrompts.filter(
+      p => p.id !== activePromptId && (p.title || "").trim().toLowerCase() === normalized
     );
-    if (hasDuplicate) {
-      showNotification("Note: Another prompt already uses this title.", "warning");
+    if (duplicates.length > 0) {
+      setDuplicateTitleOption('rename');
+      setDuplicateTitleModal({
+        promptId: activePromptId,
+        title: trimmed,
+        normalized,
+        duplicateCount: duplicates.length
+      });
     }
   };
+
+  useEffect(() => {
+    if (!duplicateTitleModal) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setDuplicateTitleModal(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [duplicateTitleModal]);
 
   const handleTagsChange = (newTags) => {
     // LÖSUNG 2: Hole LATEST Prompt
@@ -3332,6 +3365,107 @@ const initiateWorkflow = async (promptId) => {
         )}
       </ConfirmationModal>
 
+      {/* DUPLICATE PROMPT TITLE OVERLAY (1:1 aligned with Snippet Rename Overlay, Light & Dark theme tokens) */}
+      {duplicateTitleModal && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-bg-surface border border-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-border bg-bg-secondary flex items-center gap-3">
+              <div className="p-2 bg-primary-subtle text-primary rounded-lg shrink-0">
+                <AlertCircle size={20} />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-bold text-text-main">Duplicate Prompt Title</h3>
+                <p className="text-xs text-text-muted truncate">
+                  Another prompt is already named <b>"{duplicateTitleModal.title}"</b>
+                </p>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-text-main leading-relaxed">
+                This title is already used by <b>{duplicateTitleModal.duplicateCount === 1 ? '1 other prompt' : `${duplicateTitleModal.duplicateCount} other prompts`}</b>.
+                How would you like to proceed?
+              </p>
+
+              <div className="space-y-3">
+                {/* OPTION 1: RENAME (RECOMMENDED) */}
+                <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${duplicateTitleOption === 'rename' ? 'bg-primary-subtle border-primary' : 'bg-bg border-border hover:border-text-muted'}`}>
+                  <input
+                    type="radio"
+                    name="duplicateTitleOption"
+                    value="rename"
+                    checked={duplicateTitleOption === 'rename'}
+                    onChange={() => setDuplicateTitleOption('rename')}
+                    className="sr-only"
+                  />
+                  <span className={`w-4 h-4 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${duplicateTitleOption === 'rename' ? 'border-primary' : 'border-text-faint bg-bg-surface'}`}>
+                    {duplicateTitleOption === 'rename' && <span className="w-2 h-2 rounded-full bg-primary" />}
+                  </span>
+                  <div>
+                    <div className="text-sm font-bold text-text-main">Rename Title (Recommended)</div>
+                    <div className="text-xs text-text-muted mt-0.5">
+                      Return to the title field to choose a unique name so internal <code>[[{duplicateTitleModal.title}]]</code> links stay unambiguous.
+                    </div>
+                  </div>
+                </label>
+
+                {/* OPTION 2: KEEP DUPLICATE */}
+                <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${duplicateTitleOption === 'keep' ? 'bg-bg-secondary border-text-muted' : 'bg-bg border-border hover:border-text-muted'}`}>
+                  <input
+                    type="radio"
+                    name="duplicateTitleOption"
+                    value="keep"
+                    checked={duplicateTitleOption === 'keep'}
+                    onChange={() => setDuplicateTitleOption('keep')}
+                    className="sr-only"
+                  />
+                  <span className={`w-4 h-4 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${duplicateTitleOption === 'keep' ? 'border-primary' : 'border-text-faint bg-bg-surface'}`}>
+                    {duplicateTitleOption === 'keep' && <span className="w-2 h-2 rounded-full bg-primary" />}
+                  </span>
+                  <div>
+                    <div className="text-sm font-bold text-text-main">Keep Duplicate Title</div>
+                    <div className="text-xs text-text-muted mt-0.5">
+                      Keep the identical title. Internal <code>[[{duplicateTitleModal.title}]]</code> links in your Knowledge Base will only point to the first match.
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-border bg-bg-surface flex justify-end">
+              <button
+                onClick={() => {
+                  if (duplicateTitleOption === 'keep') {
+                    acknowledgedDuplicateTitleRef.current = {
+                      promptId: duplicateTitleModal.promptId,
+                      title: duplicateTitleModal.normalized
+                    };
+                    setDuplicateTitleModal(null);
+                  } else {
+                    const targetPromptId = duplicateTitleModal.promptId;
+                    setDuplicateTitleModal(null);
+                    if (activePromptId !== targetPromptId) {
+                      setActivePrompt(targetPromptId);
+                    }
+                    setTimeout(() => {
+                      const input = document.getElementById('dash-title');
+                      if (input) {
+                        input.focus();
+                        input.select();
+                      }
+                    }, 50);
+                  }
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary-hover shadow-lg transition-all flex items-center gap-2"
+              >
+                <Check size={16} />
+                {duplicateTitleOption === 'keep' ? 'Keep Title' : 'Rename Title'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Notifications */}
       <AnimatePresence>
         {notification && (
@@ -3342,15 +3476,10 @@ const initiateWorkflow = async (promptId) => {
             className={`fixed bottom-8 right-8 z-[200] px-6 py-3 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.15)] border flex items-center gap-3 backdrop-blur-md transition-all
               ${notification.type === 'error'
                 ? 'bg-red-50 border-red-200 text-red-600 dark:bg-red-500/10 dark:border-red-500/50 dark:text-red-500'
-                : notification.type === 'warning'
-                  ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-500/10 dark:border-amber-500/50 dark:text-amber-400'
-                  : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/50 dark:text-emerald-500'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/50 dark:text-emerald-500'
               }`}
           >
-            {notification.type === 'error' || notification.type === 'warning'
-              ? <AlertCircle size={20} />
-              : <CheckCircle2 size={20} className="text-emerald-600 dark:text-emerald-500" />
-            }
+            {notification.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} className="text-emerald-600 dark:text-emerald-500" />}
             <span className="font-medium">{notification.msg}</span>
             <button
               onClick={() => setNotification(null)}
