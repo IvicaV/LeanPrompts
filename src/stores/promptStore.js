@@ -278,10 +278,10 @@ const usePromptStore = create((set, get) => ({
     // PROMPT AUTO-SNAPSHOT: Detect first modification of a "finished draft" step
     const existingPrompt = get().prompts.find(p => p.id === finalPrompt.id);
 
-    // RELATIONAL GUARD: If title changed, update KB links
+    // RELATIONAL GUARD: If title changed, update KB links (unless another prompt still owns oldTitle)
     const oldTitle = existingPrompt?.title;
     const newTitle = finalPrompt.title;
-    if (oldTitle && newTitle && oldTitle !== newTitle) {
+    if (oldTitle && newTitle && oldTitle !== newTitle && !get().prompts.some(p => p.id !== finalPrompt.id && p.title === oldTitle)) {
       const tiles = get().knowledgeTiles;
       const escapedOldTitle = escapeRegExp(oldTitle);
       const wikiRegex = new RegExp(`\\[\\[${escapedOldTitle}\\]\\]`, 'g'); // Match exact [[Title]]

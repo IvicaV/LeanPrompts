@@ -49,7 +49,7 @@ import useOnboardingStore from '../../../stores/onboardingStore';
  * Enthält die vollständige Render-Logik für die Prompt-Chain.
  */
 export default function Workspace({
-    activePrompt, activeStepId, localTitle, onTitleChange, onShare, onShareWorkflow, isPreviewMode, onTogglePreview,
+    activePrompt, activeStepId, localTitle, onTitleChange, onTitleBlur, onShare, onShareWorkflow, isPreviewMode, onTogglePreview,
     isSaving, onManualSnapshot, onDeletePrompt, localEditorContent, onEditorChange, localStepTitles,
     onStepTitleChange, onStepFocus, onMoveStep, onCopyStep, onSaveStep, onDeleteStep, onAddStep,
     onLaunchStep, snippets, prompts, copyingStepId, savingStepId, llms, getPreviewForStep,
@@ -668,6 +668,7 @@ export default function Workspace({
                                 ref={titleInputRef}
                                 value={localTitle}
                                 onChange={onTitleChange}
+                                onBlur={onTitleBlur}
                                 onFocus={(e) => e.target.select()}
                                 className="bg-transparent text-xl font-bold text-text-main focus:outline-none w-full placeholder:text-text-muted/50 truncate"
                                 placeholder="Untitled Prompt"

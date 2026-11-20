@@ -2631,6 +2631,19 @@ const initiateWorkflow = async (promptId) => {
     }, 500);
   };
 
+  const handleTitleBlur = () => {
+    if (!activePromptId) return;
+    const trimmed = (localTitle || "").trim();
+    if (!trimmed || trimmed.toLowerCase() === "untitled prompt") return;
+    const currentPrompts = usePromptStore.getState().prompts || [];
+    const hasDuplicate = currentPrompts.some(
+      p => p.id !== activePromptId && (p.title || "").trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (hasDuplicate) {
+      showNotification("Note: Another prompt already uses this title.", "warning");
+    }
+  };
+
   const handleTagsChange = (newTags) => {
     // LÖSUNG 2: Hole LATEST Prompt
     const latestPrompt = usePromptStore.getState().prompts.find(p => p.id === activePromptId);
@@ -3092,6 +3105,7 @@ const initiateWorkflow = async (promptId) => {
                         activeStepId={activeStepId}
                         localTitle={localTitle}
                         onTitleChange={handleTitleChange}
+                        onTitleBlur={handleTitleBlur}
                         onTagsChange={handleTagsChange}
                         onShare={(stepId = null) => {
                           setShareTargetStepId(stepId);
@@ -3328,10 +3342,15 @@ const initiateWorkflow = async (promptId) => {
             className={`fixed bottom-8 right-8 z-[200] px-6 py-3 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.15)] border flex items-center gap-3 backdrop-blur-md transition-all
               ${notification.type === 'error'
                 ? 'bg-red-50 border-red-200 text-red-600 dark:bg-red-500/10 dark:border-red-500/50 dark:text-red-500'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/50 dark:text-emerald-500'
+                : notification.type === 'warning'
+                  ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-500/10 dark:border-amber-500/50 dark:text-amber-400'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/50 dark:text-emerald-500'
               }`}
           >
-            {notification.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} className="text-emerald-600 dark:text-emerald-500" />}
+            {notification.type === 'error' || notification.type === 'warning'
+              ? <AlertCircle size={20} />
+              : <CheckCircle2 size={20} className="text-emerald-600 dark:text-emerald-500" />
+            }
             <span className="font-medium">{notification.msg}</span>
             <button
               onClick={() => setNotification(null)}
