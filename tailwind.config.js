@@ -24,26 +24,26 @@ export default {
       colors: {
         // Mapping auf CSS Variablen für dynamisches Theming
         bg: {
-          DEFAULT: "var(--bg-main)",
-          surface: "var(--bg-surface)",
-          elevated: "var(--bg-elevated)",
-          secondary: "var(--bg-secondary)",
+          DEFAULT: "color-mix(in srgb, var(--bg-main) calc(<alpha-value> * 100%), transparent)",
+          surface: "color-mix(in srgb, var(--bg-surface) calc(<alpha-value> * 100%), transparent)",
+          elevated: "color-mix(in srgb, var(--bg-elevated) calc(<alpha-value> * 100%), transparent)",
+          secondary: "color-mix(in srgb, var(--bg-secondary) calc(<alpha-value> * 100%), transparent)",
           pinned: "var(--bg-pinned)",
-          hover: "var(--bg-hover)" // NEU: Explizite Hover Farbe
+          hover: "color-mix(in srgb, var(--bg-hover) calc(<alpha-value> * 100%), transparent)" // NEU: Explizite Hover Farbe
         },
         primary: {
-          DEFAULT: "var(--primary)",
+          DEFAULT: "color-mix(in srgb, var(--primary) calc(<alpha-value> * 100%), transparent)",
           hover: "var(--primary-hover)",
           faint: "var(--primary-faint)",
           subtle: "var(--primary-subtle)"
         },
         text: {
-          main: "var(--text-main)",
-          muted: "var(--text-muted)",
-          faint: "var(--text-faint)"
+          main: "color-mix(in srgb, var(--text-main) calc(<alpha-value> * 100%), transparent)",
+          muted: "color-mix(in srgb, var(--text-muted) calc(<alpha-value> * 100%), transparent)",
+          faint: "color-mix(in srgb, var(--text-faint) calc(<alpha-value> * 100%), transparent)"
         },
         border: {
-          DEFAULT: "var(--border-main)",
+          DEFAULT: "color-mix(in srgb, var(--border-main) calc(<alpha-value> * 100%), transparent)",
           subtle: "var(--border-subtle)",
           focus: "var(--border-focus)"
         },
