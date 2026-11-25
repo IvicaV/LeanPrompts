@@ -29,6 +29,15 @@ export class AbstractBaseStrategy {
     constructor(name, domains) {
         this.name = name;
         this.domains = domains;
+        this.selfVerifiesFiles = false;
+    }
+
+    /**
+     * CONTRACT: Optional local container around the prompt input for fast, scoped DOM checks.
+     * Returns null by default so shared orchestrators fall back to standard container heuristics.
+     */
+    getPromptContainer(inputEl) {
+        return null;
     }
 
     /**

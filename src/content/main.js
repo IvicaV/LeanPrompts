@@ -292,12 +292,11 @@ async function waitUntil(conditionFn, timeout = 5000) {
   });
 }
 
-// Fingerprinting System for DOM Stability
-const getEditorState = (editorEl) => {
+// Fingerprinting System for DOM Stability (Zero-Reflow + Strategy-Scoped Container)
+const getEditorState = (editorEl, promptContainer = null) => {
   if (!editorEl) return "";
-  // We count potential file chips (images, buttons, svgs)
-  // Wider search: look in parent and siblings to find chips that might be outside the direct editor container
-  const container = editorEl.closest('div[class*="editor"], [role="main"], [class*="prompt"], [class*="composer"], body') || editorEl;
+  // Prefer strategy-scoped container when provided; fall back to standard container heuristics
+  const container = promptContainer || editorEl.closest('div[class*="editor"], [role="main"], [class*="prompt"], [class*="composer"], body') || editorEl;
 
   // Use Deep Search for Shadow DOM support (AI Studio, Gemini, etc.)
   const chips = findAllElementsDeep(container, el => {
@@ -309,22 +308,27 @@ const getEditorState = (editorEl) => {
       cls.includes('chip') || cls.includes('attachment') || cls.includes('file') || cls.includes('progress');
   });
 
-  // Also check pure text length as fallback
-  const textLen = (editorEl.value || editorEl.innerText || "").length;
+  // Zero-Reflow: use textContent instead of innerText
+  const textLen = (editorEl.value || editorEl.textContent || "").length;
   return `${chips.length}:${textLen}`;
 };
 
-// Optimized: One single DOM walk to find ALL staged/visible filename markers
+// Optimized Zero-Reflow DOM walk (Shadow-DOM safe, never triggers synchronous layout via innerText)
 function getStagedFileContent(container = document, excludeInput = null) {
+  if (!container) return [];
   const candidates = findAllElementsDeep(container, el => {
     if (el.nodeType !== Node.ELEMENT_NODE) return false;
     if (excludeInput && (el === excludeInput || excludeInput.contains(el))) return false;
     const tag = el.tagName.toLowerCase();
-    return tag === 'img' || tag === 'span' || tag === 'div' || tag === 'button' || tag === 'ms-file-chip';
+    if (tag === 'img' || tag === 'button' || tag === 'ms-file-chip') return true;
+    if (el.hasAttribute('aria-label') || el.hasAttribute('title') || el.hasAttribute('data-name') || el.hasAttribute('data-filename')) return true;
+    // Leaf text elements (catches Tailwind-styled chips without semantic class names, without duplicating parent subtrees)
+    if ((tag === 'span' || tag === 'div' || tag === 'p') && el.children.length === 0) return true;
+    return false;
   });
 
   return candidates.map(el => (
-    el.innerText ||
+    el.textContent ||
     el.getAttribute('aria-label') ||
     el.getAttribute('title') ||
     el.getAttribute('alt') ||
@@ -332,7 +336,7 @@ function getStagedFileContent(container = document, excludeInput = null) {
     el.getAttribute('data-filename') ||
     (el.tagName === 'IMG' ? el.getAttribute('src') : "") ||
     ""
-  ).toLowerCase());
+  ).toLowerCase()).filter(Boolean);
 }
 
 function isInjectionRedundant(inputField, request) {
@@ -744,19 +748,23 @@ try {
               return manualOverrideElement;
             }
 
-            // 2. Optimized Discovery: Prioritize direct adapter query
-            if (adapter) {
+            // 2. Optimized Discovery: Prioritize direct adapter query without bypassing its throttle
+            if (adapter && adapter.name !== 'Generic') {
               const el = adapter.getInput();
               if (el) {
                 const style = window.getComputedStyle(el);
                 if (style.display !== 'none' && style.visibility !== 'hidden') return el;
               }
+              // Failsafe Fallback: Only fall back to generic heuristics after 3s so dedicated
+              // strategy throttles and exclusion guards (e.g. System Instructions) are respected
+              if (Date.now() - isProcessing.startTime > 3000) {
+                const fallbackEl = findBestTextInput();
+                if (fallbackEl) return fallbackEl;
+              }
+            } else {
+              const fallbackEl = findBestTextInput();
+              if (fallbackEl) return fallbackEl;
             }
-            
-            // Failsafe Fallback: If adapter query returned null, fall back to heuristic discovery
-            // so the injection never stalls in a 25-second polling timeout!
-            const fallbackEl = findBestTextInput();
-            if (fallbackEl) return fallbackEl;
 
             // 3. Progressive Feedback (Spinner stays active during connection)
             const timeElapsed = Date.now() - isProcessing.startTime;
@@ -841,7 +849,11 @@ try {
             if (window.self !== window.top) {
               console.log("LeanPrompts: Skipping file injection in sub-frame (dedup guard).");
             } else {
-              const initialFingerprint = getEditorState(inputField.parentElement?.parentElement || inputField);
+              const strategyPromptContainer = adapter?._strategy?.getPromptContainer?.(inputField) || null;
+              const selfVerifiesFiles = !!adapter?._strategy?.selfVerifiesFiles;
+              const initialFingerprint = selfVerifiesFiles
+                ? ""
+                : getEditorState(inputField.parentElement?.parentElement || inputField, strategyPromptContainer);
 
               const fileSuccess = await injectFiles(redundancy.filesToInject, adapter?.name);
 
@@ -849,10 +861,10 @@ try {
                 // Soft-fail: Flag but do NOT abort — text injection must continue
                 filesFailed = true;
                 console.warn("LeanPrompts: File injection failed. Proceeding with text injection.");
-              } else {
-                // Wait for DOM to React (only when files were actually injected)
+              } else if (!selfVerifiesFiles) {
+                // Wait for DOM to React (only for strategies without built-in MutationObserver verification)
                 await waitUntil(() => {
-                  const currentFingerprint = getEditorState(inputField.parentElement?.parentElement || inputField);
+                  const currentFingerprint = getEditorState(inputField.parentElement?.parentElement || inputField, strategyPromptContainer);
                   return currentFingerprint !== initialFingerprint;
                 }, 4000);
 
@@ -935,6 +947,14 @@ try {
       return true;
     }
 
+    // CONTEXT STATE HANDLER (Merged here so fallback does not shadow it)
+    if (request.action === "GET_CONTEXT_STATE") {
+      try {
+        sendResponse(getContextState());
+      } catch (e) { /* ignore */ }
+      return false;
+    }
+
     // Fallback
     try { sendResponse({ status: "ignored" }); } catch (e) { }
     return false;
@@ -977,18 +997,35 @@ const getContextState = (target = null) => {
   return { hasSelection, isEditable, selectionText };
 };
 
-const sendContextUpdate = (target = null) => {
-  const state = getContextState(target);
-  // Use safe wrapper to prevent errors when context is invalidated
-  safeSendMessage({
-    action: "UPDATE_CONTEXT_STATE",
-    ...state
-  });
+let contextUpdateTimer = null;
+let lastContextHash = '';
+
+const sendContextUpdate = (target = null, immediate = false) => {
+  const dispatch = () => {
+    const state = getContextState(target);
+    const hash = `${state.hasSelection}|${state.isEditable}|${state.selectionText}`;
+    if (!immediate && hash === lastContextHash) return;
+    lastContextHash = hash;
+    // Use safe wrapper to prevent errors when context is invalidated
+    safeSendMessage({
+      action: "UPDATE_CONTEXT_STATE",
+      ...state
+    });
+  };
+
+  if (immediate) {
+    clearTimeout(contextUpdateTimer);
+    dispatch();
+    return;
+  }
+
+  clearTimeout(contextUpdateTimer);
+  contextUpdateTimer = setTimeout(dispatch, 150);
 };
 
 // Named handlers for event listeners (so they can be removed on context invalidation)
 const selectionChangeHandler = () => sendContextUpdate();
-const contextMenuHandler = (e) => sendContextUpdate(e.target);
+const contextMenuHandler = (e) => sendContextUpdate(e.target, true);
 const mouseUpHandler = () => sendContextUpdate();
 const mouseDownHandler = () => sendContextUpdate();
 const keyUpHandler = () => sendContextUpdate();
@@ -1004,14 +1041,14 @@ document.addEventListener('focus', focusHandler, true);
 
 // Initial state sync
 if (document.readyState === 'complete') {
-  sendContextUpdate();
+  sendContextUpdate(null, true);
   checkLinkedInShare();
 } else {
   window.addEventListener('DOMContentLoaded', () => {
-    sendContextUpdate();
+    sendContextUpdate(null, true);
     checkLinkedInShare();
   });
-  window.addEventListener('load', () => sendContextUpdate());
+  window.addEventListener('load', () => sendContextUpdate(null, true));
 }
 
 function checkLinkedInShare() {
@@ -1023,26 +1060,6 @@ function checkLinkedInShare() {
       }
     });
   }
-}
-
-// Handler for background script to query state
-try {
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // Guard against context invalidation
-    if (!isContextValid || !isRuntimeValid()) {
-      cleanupOnContextInvalidation();
-      return false;
-    }
-
-    if (request.action === "GET_CONTEXT_STATE") {
-      try {
-        sendResponse(getContextState());
-      } catch (e) { /* ignore */ }
-      return false;
-    }
-  });
-} catch (e) {
-  // Extension context invalidated
 }
 
 /* @PROTECTED_REGION END: CONTENT_ORCHESTRATOR */

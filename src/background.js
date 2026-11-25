@@ -41,13 +41,15 @@ import { backupManager } from './utils/backup';
 // --- DYNAMIC CONTENT SCRIPT INJECTION HELPER ---
 async function ensureContentScriptActive(tabId) {
   try {
-    // 1. Sende eine Testnachricht, um zu prüfen ob das Skript bereits geladen ist
+    // 1. Sende eine Testnachricht an Frame 0, um zu prüfen ob das Skript bereits geladen ist
     const isActive = await new Promise(resolve => {
-      chrome.tabs.sendMessage(tabId, { action: "PING" }, (response) => {
-        if (chrome.runtime.lastError) resolve(false);
-        else resolve(response && (response.status === "ACK" || response.status === "PONG"));
+      let settled = false;
+      const done = (val) => { if (!settled) { settled = true; resolve(val); } };
+      chrome.tabs.sendMessage(tabId, { action: "PING" }, { frameId: 0 }, (response) => {
+        if (chrome.runtime.lastError) done(false);
+        else done(!!(response && (response.status === "ACK" || response.status === "PONG")));
       });
-      setTimeout(() => resolve(false), 250); // Erhöht auf 250ms für verbesserte Toleranz bei hoher Systemlast
+      setTimeout(() => done(false), 500); // 500ms Toleranz nach Tab-Fokus (vermeidet unnötige executeScript-Fallbacks)
     });
 
     if (isActive) return true;
@@ -632,6 +634,17 @@ const performInjection = async (tabId, payload) => {
 
     const sendToAllFrames = (id, data) => new Promise(async resolve => {
       try {
+        // ZERO-REGRESSION OPTIMIZATION: main.js strictly ignores sub-frames for INJECT_PROMPT_v105
+        // (window.self !== window.top -> SUB_FRAME_IGNORED). Sending directly to Frame 0 prevents
+        // stalled cross-origin iframes (e.g. Google Auth/OnePick in AI Studio) from blocking Promise.all for 20s+.
+        if (data && data.action === "INJECT_PROMPT_v105") {
+          chrome.tabs.sendMessage(id, data, { frameId: 0 }, (resp) => {
+            if (chrome.runtime.lastError) resolve([{ success: false, error: "CHANNEL_CLOSED", frameId: 0 }]);
+            else resolve([{ ...(resp || { success: false, error: "NO_RESPONSE" }), frameId: 0 }]);
+          });
+          return;
+        }
+
         const frames = await chrome.webNavigation.getAllFrames({ tabId: id });
         if (!frames || frames.length === 0) {
           // Fallback to main frame if navigation API fails
@@ -640,9 +653,15 @@ const performInjection = async (tabId, payload) => {
         }
 
         const results = await Promise.all(frames.map(frame => new Promise(fRes => {
+          let settled = false;
+          const finish = (val) => { if (!settled) { settled = true; fRes(val); } };
+          // Bounded timeout for non-0 sub-frames so a hung iframe can never stall Promise.all
+          if (frame.frameId !== 0) {
+            setTimeout(() => finish({ success: false, silent: true, error: "SUB_FRAME_TIMEOUT", frameId: frame.frameId }), 1000);
+          }
           chrome.tabs.sendMessage(id, data, { frameId: frame.frameId }, (resp) => {
-            if (chrome.runtime.lastError) fRes({ success: false, error: "CHANNEL_CLOSED", frameId: frame.frameId });
-            else fRes({ ...(resp || { success: false, error: "NO_RESPONSE" }), frameId: frame.frameId });
+            if (chrome.runtime.lastError) finish({ success: false, error: "CHANNEL_CLOSED", frameId: frame.frameId });
+            else finish({ ...(resp || { success: false, error: "NO_RESPONSE" }), frameId: frame.frameId });
           });
         })));
         resolve(results);
@@ -1450,11 +1469,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           let targetTab = null;
           if (activeWindowId) {
-            // Split-screen mode: ONLY search in dedicated window
-            targetTab = tabs.find(t => t.windowId === activeWindowId && matchesDomain(t.url));
+            // Split-screen mode: ONLY search in dedicated window (check pendingUrl for cold-restored/discarded tabs)
+            targetTab = tabs.find(t => t.windowId === activeWindowId && matchesDomain(t.url || t.pendingUrl));
           } else {
-            // Normal mode: search all windows for matching domain
-            targetTab = allDomains.length > 0 ? tabs.find(t => matchesDomain(t.url)) : null;
+            // Normal mode: search all windows for matching domain (check pendingUrl for cold-restored/discarded tabs)
+            targetTab = allDomains.length > 0 ? tabs.find(t => matchesDomain(t.url || t.pendingUrl)) : null;
           }
 
           if (targetTab) {
@@ -1468,6 +1487,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             try {
               let shouldResetContext = !!forceNavigate;
               let targetUrl = url;
+              let isScriptVerified = false;
 
               // Wake-up guard: If Chromium discarded the background tab (Memory Saver) or it is still loading
               // after focus/activation, wait for the content script before probing compatibility.
@@ -1476,7 +1496,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 await waitForContentScript(targetTab.id, 12000);
               }
 
-              if (!shouldResetContext) {
+              const resolvedTabUrl = (wokenTab && (wokenTab.url || wokenTab.pendingUrl)) || targetTab.url || targetTab.pendingUrl || "";
+
+              // AI STUDIO FAST-PATH: If already on an active chat/playground route in single-click mode,
+              // shouldResetContext will never flip to true regardless of CHECK_COMPATIBILITY_v105.
+              // Skip the redundant pre-flight round-trips and dispatch directly to performInjection()
+              // (which already handles Frame-0 self-healing and in-place polling).
+              const isAIStudio = resolvedTabUrl.includes('aistudio.google.com') || (url && url.includes('aistudio.google.com'));
+              const isAIStudioChatPage = isAIStudio && (resolvedTabUrl.includes('/prompts/') || resolvedTabUrl.includes('/playground'));
+
+              if (!shouldResetContext && isAIStudioChatPage) {
+                isScriptVerified = true;
+              } else if (!shouldResetContext) {
                 await ensureContentScriptActive(targetTab.id);
                 const check = await new Promise(resolve => {
                   chrome.tabs.sendMessage(targetTab.id, { action: "CHECK_COMPATIBILITY_v105" }, { frameId: 0 }, (response) => {
@@ -1490,16 +1521,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   });
                   setTimeout(() => resolve(null), 6000);
                 });
+                if (check && check.version === "1.0.5-FIX") {
+                  isScriptVerified = true;
+                }
 
                 // AI STUDIO UPGRADE: Ensure we always land on a chat-capable URL if navigation is required.
-                const isAIStudio = targetTab.url.includes('aistudio.google.com') || (url && url.includes('aistudio.google.com'));
-
                 if (isAIStudio) {
-                  const isChatPage = targetTab.url.includes('/prompts/') || targetTab.url.includes('/playground');
-                  // Respect single-click mode: If already on an active AI Studio chat/playground page,
-                  // never force-navigate away to /prompts/new_chat on a slow wake-up. performInjection()
-                  // handles in-place polling up to 25s without destroying the current chat context.
-                  if (!isChatPage && (!check || !check.hasInput)) {
+                  if (!isAIStudioChatPage && (!check || !check.hasInput)) {
                     shouldResetContext = true;
                     // Upgrade URL to the chat-capable endpoint
                     if (targetUrl === 'https://aistudio.google.com' || targetUrl === 'https://aistudio.google.com/') {
@@ -1517,7 +1545,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               }
 
               if (shouldResetContext) {
-                const currentCleanUrl = targetTab.url.split('?')[0].split('#')[0];
+                const currentCleanUrl = resolvedTabUrl.split('?')[0].split('#')[0];
                 const targetCleanUrl = targetUrl.split('?')[0].split('#')[0];
                 
                 // ZERO-REGRESSION OPTIMIZATION: If the tab is already on the exact target URL
@@ -1603,7 +1631,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // Hard fallback watchdog: bounded at 8s to guarantee channel closure in deadlock scenarios
                 fallbackTimer = setTimeout(proceedWithInjection, 8000);
               } else {
-                await waitForContentScript(targetTab.id);
+                // Skip redundant waitForContentScript if CHECK_COMPATIBILITY_v105 already verified Frame 0
+                if (!isScriptVerified) {
+                  await waitForContentScript(targetTab.id);
+                }
                 if (!text && (!files || files.length === 0)) {
                   sendResponse({ success: true, status: "opened" });
                 } else {
