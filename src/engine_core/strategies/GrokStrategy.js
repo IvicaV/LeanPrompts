@@ -30,16 +30,25 @@ import { findBestTextInput, waitForElement, findAllElementsDeep } from '../DOMUt
 export class GrokStrategy extends AbstractBaseStrategy {
     constructor() {
         super('Grok', ['grok.com', 'x.com']);
+        this._lastFileDeepScan = 0;
     }
 
     getInput() {
+        // 0. Auth State Guard: If a login modal/form is active, do NOT hijack inputs behind it
+        const isLoggedOut = document.querySelector('input[type="password"]') ||
+            document.querySelector('form[action*="login" i], form[action*="auth" i]') ||
+            document.querySelector('[role="dialog"] a[href*="accounts.x.ai"], [role="dialog"] input[type="email"]');
+
+        if (isLoggedOut) {
+            return null;
+        }
+
         // First: Try to find the ProseMirror editor (the REAL input)
         const proseMirror = document.querySelector('div.tiptap.ProseMirror[contenteditable="true"]') ||
             document.querySelector('.ProseMirror[contenteditable="true"]') ||
             document.querySelector('div.tiptap[contenteditable="true"]');
 
         if (proseMirror) {
-            console.log('[LeanPrompts Grok] Found ProseMirror editor');
             return proseMirror;
         }
 
@@ -49,44 +58,48 @@ export class GrokStrategy extends AbstractBaseStrategy {
             document.querySelector('textarea');
 
         if (textarea) {
-            console.log('[LeanPrompts Grok] Found TEXTAREA, clicking to activate ProseMirror');
             textarea.click();
             textarea.focus();
 
-            // Check again for ProseMirror after activation
             const activated = document.querySelector('div.tiptap.ProseMirror[contenteditable="true"]') ||
                 document.querySelector('.ProseMirror[contenteditable="true"]');
 
             if (activated) {
-                console.log('[LeanPrompts Grok] ProseMirror activated after click');
                 return activated;
             }
-
-            // If still no ProseMirror, return the textarea
             return textarea;
         }
 
-        // Ultimate fallback
         return document.querySelector('div[role="textbox"]') ||
             document.querySelector('div[contenteditable="true"]') ||
             findBestTextInput();
     }
 
     async getFileInput() {
-        return await waitForElement(() =>
-            document.querySelector('input[type="file"].hidden') ||
-            document.querySelector('input[type="file"][data-testid="fileInput"]') ||
-            findAllElementsDeep(document, el => el.tagName === 'INPUT' && el.type === 'file')[0]
-            , 3000);
+        return await waitForElement(() => {
+            const direct = document.querySelector('input[type="file"].hidden') ||
+                document.querySelector('input[type="file"][data-testid="fileInput"]') ||
+                document.querySelector('input[type="file"]');
+            if (direct) return direct;
+
+            const now = Date.now();
+            if (now - this._lastFileDeepScan < 400) return null;
+            this._lastFileDeepScan = now;
+
+            return findAllElementsDeep(document, el => el.tagName === 'INPUT' && el.type === 'file')[0] || null;
+        }, 3000);
     }
 
     /**
-     * Text injection - handles both ProseMirror and TEXTAREA.
+     * Text injection - handles both ProseMirror and TEXTAREA with hydration & verification guards.
      */
     async injectText(element, text) {
-        if (!element || !text) return false;
+        if (!text) return false;
 
-        console.log('[LeanPrompts Grok] injectText called with:', element.tagName, 'contentEditable:', element.isContentEditable);
+        if (!element || !element.isConnected) {
+            element = this.getInput();
+        }
+        if (!element) return false;
 
         // If we got a TEXTAREA, try to find and use ProseMirror instead
         if (element.tagName === 'TEXTAREA') {
@@ -97,20 +110,21 @@ export class GrokStrategy extends AbstractBaseStrategy {
             const proseMirror = document.querySelector('div.tiptap.ProseMirror[contenteditable="true"]') ||
                 document.querySelector('.ProseMirror[contenteditable="true"]');
 
-            if (proseMirror) {
-                console.log('[LeanPrompts Grok] Switching to ProseMirror after TEXTAREA activation');
+            if (proseMirror && proseMirror.isConnected) {
                 element = proseMirror;
             }
+        }
+
+        if (!element.isConnected) {
+            element = this.getInput();
+            if (!element) return false;
         }
 
         element.focus();
         await new Promise(r => setTimeout(r, 100));
 
-        // ContentEditable (ProseMirror) - use paste simulation
+        // ContentEditable (ProseMirror) - use paste simulation + verification fallback
         if (element.isContentEditable) {
-            console.log('[LeanPrompts Grok] Using paste for ContentEditable');
-
-            // Prepare HTML content with paragraphs
             const lines = text.split('\n');
             const htmlContent = lines.map(line =>
                 line.trim() === '' ? '<p><br></p>' : `<p>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
@@ -130,20 +144,33 @@ export class GrokStrategy extends AbstractBaseStrategy {
             element.dispatchEvent(pasteEvent);
             element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
 
-            console.log('[LeanPrompts Grok] Paste dispatched to ContentEditable');
-            return true;
+            await new Promise(r => setTimeout(r, 80));
+            if (!element.isConnected) element = this.getInput() || element;
+            const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const firstLine = text.split('\n').find(l => l.trim()) || text;
+            const snippet = norm(firstLine).slice(0, 15);
+            if (snippet.length < 3 || norm(element.textContent).includes(snippet)) {
+                return true;
+            }
+
+            try {
+                element.focus();
+                document.execCommand('insertText', false, text);
+                element.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));
+            } catch (e) { }
+
+            await new Promise(r => setTimeout(r, 60));
+            return norm(element.textContent).includes(snippet);
         }
 
         // TEXTAREA - use native setter with React's _valueTracker hack
         if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
-            console.log('[LeanPrompts Grok] Using native setter with React valueTracker hack');
             try {
                 const prototype = element.tagName === 'TEXTAREA'
                     ? window.HTMLTextAreaElement.prototype
                     : window.HTMLInputElement.prototype;
                 const nativeSetter = Object.getOwnPropertyDescriptor(prototype, "value").set;
 
-                // Reset React's value tracker to force it to see the change
                 const tracker = element._valueTracker;
                 if (tracker) {
                     tracker.setValue('');
@@ -151,8 +178,6 @@ export class GrokStrategy extends AbstractBaseStrategy {
 
                 nativeSetter.call(element, text);
 
-                // Dispatch comprehensive events
-                // Grok/X.ai React Fiber often listens to 'beforeinput' to initialize state buffers
                 const beforeInputEvent = new InputEvent('beforeinput', {
                     bubbles: true,
                     composed: true,
@@ -165,11 +190,8 @@ export class GrokStrategy extends AbstractBaseStrategy {
                 element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
                 element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
                 element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
-
-                console.log('[LeanPrompts Grok] Native setter with React hack applied');
                 return true;
             } catch (e) {
-                console.log('[LeanPrompts Grok] Error:', e);
                 element.value = text;
                 element.dispatchEvent(new Event('input', { bubbles: true }));
                 return true;
