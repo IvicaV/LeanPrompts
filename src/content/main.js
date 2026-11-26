@@ -26,6 +26,7 @@ import { getCurrentAdapter, insertText, injectFiles, findBestTextInput, waitForE
 
 // Set active flag to prevent double-injection of content scripts
 window.__LP_CONTENT_SCRIPT_ACTIVE = true;
+const SCRIPT_INSTANCE_ID = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 console.log("LeanPrompts: [VER 1.0.5-FINAL] Content Script Active.");
 
@@ -439,15 +440,19 @@ try {
       return false;
     }
 
-    // PING HANDLER (Synchronous)
+    // PING HANDLER (Synchronous, includes unique instanceId to distinguish old vs. newly navigated pages)
     if (request.action === "PING") {
-      sendResponse({ status: "PONG" });
+      sendResponse({ status: "PONG", instanceId: SCRIPT_INSTANCE_ID });
       return false;
     }
 
     // TOAST HANDLER (Minimal-Invasiv, nutzt bestehende CSS-Isolierung)
     if (request.action === "SHOW_TOAST") {
-      showStatus(request.message, false, 3000);
+      showStatus(
+        request.message,
+        request.isError !== undefined ? request.isError : false,
+        request.duration !== undefined ? request.duration : 3000
+      );
       sendResponse({ success: true });
       return false;
     }

@@ -674,8 +674,8 @@ const performInjection = async (tabId, payload) => {
     const MAX_ATTEMPTS = 200;
     const BUSY_BACKOFF_MS = 100;
     const INTERVAL_MS = 50;
-    const CHANNEL_CLOSED_TIMEOUT_MS = 5000; // 5s max retry for missing scripts
-    const startTime = Date.now();
+    const CHANNEL_CLOSED_TIMEOUT_MS = 5000; // 5s max continuous retry for missing scripts
+    let closedSince = null;
 
     // PHASE 4: Proactive Window/Tab Validation
     try {
@@ -745,21 +745,29 @@ const performInjection = async (tabId, payload) => {
           }
         }
 
-        // If main frame has been CHANNEL_CLOSED for > 5s (and self-healing failed/wasn't possible), give up.
+        // Track continuous CHANNEL_CLOSED duration so a mid-flight page redirect after >5s
+        // gets a fresh 5s window to mount the new content script instead of aborting immediately.
+        if (isMainFrameClosed && !isAnyBusy) {
+          if (!closedSince) closedSince = Date.now();
+        } else {
+          closedSince = null;
+        }
+
+        // If main frame has been continuously CHANNEL_CLOSED for > 5s (and self-healing failed/wasn't possible), give up.
         // CRITICAL FIX: We only return "Inactive" if NO frame is currently "BUSY".
         // This prevents cross-origin helper iframes (e.g. in AI Studio) from poisoning the global state.
-        if (isMainFrameClosed && !isAnyBusy && (Date.now() - startTime > CHANNEL_CLOSED_TIMEOUT_MS)) {
+        if (isMainFrameClosed && !isAnyBusy && closedSince && (Date.now() - closedSince > CHANNEL_CLOSED_TIMEOUT_MS)) {
           chrome.tabs.get(tabId, (tab) => {
             const url = tab?.url || "Unknown URL";
             console.error(`LeanPrompts: Injection failed because script is inactive on: ${url}`);
           });
-          return { success: false, error: "Extension not active on this page. (Try refreshing or check if the page is supported)" };
+          return { success: false, error: "Extension not active on this page. (Try refreshing or check if the page is supported)", needsPageToast: true };
         }
 
         const delay = isAnyBusy ? BUSY_BACKOFF_MS : INTERVAL_MS;
 
         if (i === MAX_ATTEMPTS - 1) {
-          return { success: false, error: "Injection Timeout: The LLM interface is not responding." };
+          return { success: false, error: "Injection Timeout: The LLM interface is not responding.", needsPageToast: true };
         }
         await new Promise(r => setTimeout(r, delay));
       }
@@ -1544,6 +1552,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 targetUrl = 'https://aistudio.google.com/prompts/new_chat';
               }
 
+              // Helper: Never leave the user stranded silently if popup already closed during a failed injection
+              const notifyTabOnSilentFailure = (tabId, message) => {
+                try {
+                  chrome.tabs.sendMessage(tabId, {
+                    action: "SHOW_TOAST",
+                    message,
+                    isError: 'warning',
+                    duration: 8000
+                  }, { frameId: 0 }, () => { if (chrome.runtime.lastError) { /* ignore */ } });
+                } catch (e) { /* ignore */ }
+              };
+
               if (shouldResetContext) {
                 const currentCleanUrl = resolvedTabUrl.split('?')[0].split('#')[0];
                 const targetCleanUrl = targetUrl.split('?')[0].split('#')[0];
@@ -1558,10 +1578,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     sendResponse({ success: true, status: "opened" });
                   } else {
                     const result = await performInjection(targetTab.id, { action: "INJECT_PROMPT_v105", text, files });
+                    if (result && !result.success && result.needsPageToast) {
+                      notifyTabOnSilentFailure(targetTab.id, result.error || "Injection failed. Please try again.");
+                    }
                     sendResponse(result);
                   }
                   return;
                 }
+
+                // Capture the dying old page's script instanceId BEFORE triggering reload/navigation.
+                // This guarantees our Reactive Readiness Guard NEVER mistakes the dying old page's
+                // PONG for the newly loaded chat page (root cause of Ctrl+Click wiping injections!).
+                const oldInstanceId = await new Promise(resolve => {
+                  let settled = false;
+                  const done = (val) => { if (!settled) { settled = true; resolve(val); } };
+                  chrome.tabs.sendMessage(targetTab.id, { action: "PING" }, { frameId: 0 }, (resp) => {
+                    if (chrome.runtime.lastError) done(null);
+                    else done(resp?.instanceId || null);
+                  });
+                  setTimeout(() => done(null), 200);
+                });
 
                 if (currentCleanUrl === targetCleanUrl) {
                   chrome.tabs.reload(targetTab.id);
@@ -1570,6 +1606,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
                 
                 let isResolved = false;
+                let hasStartedLoading = false;
                 let fallbackTimer;
 
                 const proceedWithInjection = async () => {
@@ -1588,38 +1625,47 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       sendResponse({ success: true, status: "opened_new" });
                     } else {
                       const result = await performInjection(targetTab.id, { action: "INJECT_PROMPT_v105", text, files });
+                      if (result && !result.success && result.needsPageToast) {
+                        notifyTabOnSilentFailure(targetTab.id, result.error || "Injection failed on new chat. Please click again.");
+                      }
                       sendResponse(result);
                     }
                   } catch (err) {
                     console.error("LeanPrompts: proceedWithInjection failed", err);
+                    notifyTabOnSilentFailure(targetTab.id, "Injection failed during page load. Please click again.");
                     sendResponse({ success: false, error: "Injection failed during load: " + err.message });
                   }
                 };
 
                 const listener = (tabId, changeInfo) => {
-                  if (tabId === targetTab.id && changeInfo.status === 'complete') {
+                  if (tabId !== targetTab.id) return;
+                  if (changeInfo.status === 'loading') {
+                    hasStartedLoading = true;
+                  }
+                  if (changeInfo.status === 'complete' && hasStartedLoading) {
                     proceedWithInjection();
                   }
                 };
 
                 chrome.tabs.onUpdated.addListener(listener);
 
-                // REACTIVE READINESS GUARD:
-                // SPAs (AI Studio, Gemini) often swallow or delay the 'complete' status event.
-                // Actively poll for content script responsiveness after 1000ms so we don't
-                // sit idle waiting for the full fallback watchdog to expire.
+                // REACTIVE READINESS GUARD (Dying-Page-Safe):
+                // Actively poll for the NEW page's content script after 1000ms.
+                // Rejects PONG responses that still carry oldInstanceId (the dying pre-navigation page).
                 (async () => {
                   const pollStart = Date.now();
                   await new Promise(r => setTimeout(r, 1000));
-                  while (!isResolved && (Date.now() - pollStart < 8000)) {
+                  while (!isResolved && (Date.now() - pollStart < 12000)) {
                     try {
-                      const isReady = await new Promise(resolve => {
+                      const pingResp = await new Promise(resolve => {
                         chrome.tabs.sendMessage(targetTab.id, { action: "PING" }, { frameId: 0 }, (resp) => {
-                          if (chrome.runtime.lastError) resolve(false);
-                          else resolve(resp && (resp.status === "PONG" || resp.status === "ACK"));
+                          if (chrome.runtime.lastError) resolve(null);
+                          else resolve(resp || null);
                         });
                       });
-                      if (isReady && !isResolved) {
+                      const isAlive = !!(pingResp && (pingResp.status === "PONG" || pingResp.status === "ACK"));
+                      const isNewDocument = !oldInstanceId || (pingResp?.instanceId && pingResp.instanceId !== oldInstanceId);
+                      if (isAlive && isNewDocument && !isResolved) {
                         proceedWithInjection();
                         break;
                       }
@@ -1628,8 +1674,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   }
                 })();
 
-                // Hard fallback watchdog: bounded at 8s to guarantee channel closure in deadlock scenarios
-                fallbackTimer = setTimeout(proceedWithInjection, 8000);
+                // Hard fallback watchdog: bounded at 12s to guarantee channel closure even on slow SPAs
+                fallbackTimer = setTimeout(proceedWithInjection, 12000);
               } else {
                 // Skip redundant waitForContentScript if CHECK_COMPATIBILITY_v105 already verified Frame 0
                 if (!isScriptVerified) {
@@ -1639,6 +1685,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   sendResponse({ success: true, status: "opened" });
                 } else {
                   const result = await performInjection(targetTab.id, { action: "INJECT_PROMPT_v105", text, files });
+                  if (result && !result.success && result.needsPageToast) {
+                    notifyTabOnSilentFailure(targetTab.id, result.error || "Injection failed. Please try again.");
+                  }
                   sendResponse(result);
                 }
               }
@@ -1707,6 +1756,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     sendResponse({ success: true, status: "opened" });
                   } else {
                     const result = await performInjection(tab.id, { action: "INJECT_PROMPT_v105", text, files });
+                    if (result && !result.success && result.needsPageToast) {
+                      try {
+                        chrome.tabs.sendMessage(tab.id, {
+                          action: "SHOW_TOAST",
+                          message: result.error || "Injection could not complete automatically. Please click again.",
+                          isError: 'warning',
+                          duration: 8000
+                        }, { frameId: 0 }, () => { if (chrome.runtime.lastError) { /* ignore */ } });
+                      } catch (e) { /* ignore */ }
+                    }
                     sendResponse(result);
                   }
                 } catch (err) {
@@ -1715,6 +1774,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   chrome.tabs.onUpdated.removeListener(listener);
                   clearTimeout(fallbackTimer);
                   console.error("LeanPrompts: proceedWithInjection for new tab failed", err);
+                  try {
+                    chrome.tabs.sendMessage(tab.id, {
+                      action: "SHOW_TOAST",
+                      message: "Injection failed during page load. Please click again.",
+                      isError: 'warning',
+                      duration: 8000
+                    }, { frameId: 0 }, () => { if (chrome.runtime.lastError) { /* ignore */ } });
+                  } catch (e) { /* ignore */ }
                   sendResponse({ success: false, error: "Injection failed: " + err.message });
                 } finally {
                   isAttempting = false;
