@@ -54,26 +54,40 @@ async function ensureContentScriptActive(tabId) {
 
     if (isActive) return true;
 
-    // 2. Falls inaktiv, prüfe über executeScript, ob das Skript bereits im Window-Kontext aktiv ist.
+    // 2. Falls inaktiv, prüfe über executeScript (Frame 0, max 2s), ob das Skript bereits im Window-Kontext aktiv ist.
     // Dies schützt zuverlässig vor doppelten Injektionen bei hoher Auslastung des Message-Ports.
-    const isAlreadyInjected = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => !!window.__LP_CONTENT_SCRIPT_ACTIVE
-    }).then(results => results?.[0]?.result).catch(() => false);
+    const withTimeout = (promise, ms, fallback) => Promise.race([
+      promise.catch(() => fallback),
+      new Promise(r => setTimeout(() => r(fallback), ms))
+    ]);
+
+    const isAlreadyInjected = await withTimeout(
+      chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => !!window.__LP_CONTENT_SCRIPT_ACTIVE
+      }).then(results => results?.[0]?.result),
+      2000,
+      false
+    );
 
     if (isAlreadyInjected) {
       return true;
     }
 
-    // 3. Falls gänzlich inaktiv, lade das Skript über die scripting-API dynamisch nach
+    // 3. Falls gänzlich inaktiv, lade das Skript über die scripting-API dynamisch nach (nur Frame 0 —
+    //    allFrames: true kann auf Seiten mit Cloudflare-/Drittanbieter-iFrames wie Perplexity minutenlang hängen!)
     const manifest = chrome.runtime.getManifest();
     const contentScript = manifest.content_scripts?.[0]?.js?.[0];
     
     if (contentScript) {
-      await chrome.scripting.executeScript({
-        target: { tabId, allFrames: true },
-        files: [contentScript]
-      });
+      await withTimeout(
+        chrome.scripting.executeScript({
+          target: { tabId },
+          files: [contentScript]
+        }),
+        3000,
+        null
+      );
       // Kurze Pause für die Registrierung des Skripts
       await new Promise(r => setTimeout(r, 150));
       return true;
@@ -706,7 +720,8 @@ const performInjection = async (tabId, payload) => {
         const isMainFrameClosed = !safeMainFrameResult || safeMainFrameResult.error === "CHANNEL_CLOSED" || safeMainFrameResult.error === "NO_RESPONSE";
 
         // 3. ONLY TRUST NON-SILENT ERRORS FROM MAIN FRAME (FRAME 0)
-        const mainFrameError = results.find(r => r && r.frameId === 0 && r.error && !r.silent && r.error !== "CHANNEL_CLOSED" && r.error !== "NO_RESPONSE" && !r.reason);
+        // Stop immediately on terminal errors (including LOGIN_REQUIRED); only retry on BUSY / CHANNEL_CLOSED.
+        const mainFrameError = results.find(r => r && r.frameId === 0 && r.error && !r.silent && r.error !== "CHANNEL_CLOSED" && r.error !== "NO_RESPONSE" && r.reason !== "BUSY");
         if (mainFrameError) {
           return mainFrameError;
         }
@@ -1621,7 +1636,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     // Gives the browser 800ms to mount initial components before injection
                     await new Promise(r => setTimeout(r, 800));
 
-                    await waitForContentScript(targetTab.id);
+                    let isReady = await waitForContentScript(targetTab.id, 1500);
+                    if (!isReady) {
+                      await ensureContentScriptActive(targetTab.id);
+                      await waitForContentScript(targetTab.id, 8000);
+                    }
                     if (!text && (!files || files.length === 0)) {
                       sendResponse({ success: true, status: "opened_new" });
                     } else {
@@ -1749,7 +1768,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   await new Promise(r => setTimeout(r, 800));
 
                   // Aktiven Handshake mit dem Content-Script versuchen
-                  const isReady = await waitForContentScript(tab.id, 12000);
+                  // (1.5s warten auf Manifest-Content-Script; falls Custom-LLM wie dola.com nicht im Manifest steht,
+                  //  dynamisch über ensureContentScriptActive nachinjizieren!)
+                  let isReady = await waitForContentScript(tab.id, 1500);
+                  if (!isReady) {
+                    const currentTab = await chrome.tabs.get(tab.id).catch(() => null);
+                    // Falls der Tab noch lädt (z. B. durch changeInfo.url ausgelöst), kurz auf 'complete' warten
+                    if (currentTab && currentTab.status !== 'complete') {
+                      const loadStart = Date.now();
+                      while (Date.now() - loadStart < 8000) {
+                        const t = await chrome.tabs.get(tab.id).catch(() => null);
+                        if (!t || t.status === 'complete') break;
+                        await new Promise(r => setTimeout(r, 250));
+                      }
+                    }
+                    await ensureContentScriptActive(tab.id);
+                    isReady = await waitForContentScript(tab.id, 8000);
+                  }
                   if (!isReady) {
                     isResolved = true;
                     chrome.tabs.onUpdated.removeListener(listener);

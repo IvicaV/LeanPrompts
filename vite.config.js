@@ -104,7 +104,13 @@ const manifest = defineManifest({
   ],
   content_security_policy: {
     extension_pages: "script-src 'self'; object-src 'self'"
-  }
+  },
+  web_accessible_resources: [
+    {
+      resources: ["assets/main.js-*.js", "assets/adapters-*.js"],
+      matches: ["*://*/*"]
+    }
+  ]
 })
 const injectScriptsPlugin = () => ({
   name: 'inject-scripts',

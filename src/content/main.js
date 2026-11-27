@@ -207,6 +207,7 @@ function showStatus(message, isError = false, duration = 3000, showSpinner = fal
       font-size: 13px !important;
       font-weight: 700 !important;
       cursor: pointer !important;
+      pointer-events: auto !important;
       color: #ffffff !important;
       transition: all 0.2s ease !important;
       box-sizing: border-box !important;
@@ -229,6 +230,41 @@ function showStatus(message, isError = false, duration = 3000, showSpinner = fal
     el.appendChild(reportBtn);
   }
   // === ENDE REPORT BUTTON ===
+
+  // Dismiss button (×) for non-spinner toasts so users can immediately clear overlays
+  if (!showSpinner) {
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Close notification');
+    closeBtn.textContent = '×';
+    closeBtn.style.cssText = `
+      all: unset !important;
+      margin-left: 6px !important;
+      width: 22px !important;
+      height: 22px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-radius: 6px !important;
+      background: transparent !important;
+      color: #ffffff !important;
+      opacity: 0.75 !important;
+      font-size: 18px !important;
+      font-weight: 600 !important;
+      line-height: 1 !important;
+      cursor: pointer !important;
+      pointer-events: auto !important;
+      transition: opacity 0.15s ease !important;
+      flex-shrink: 0 !important;
+    `;
+    closeBtn.onmouseenter = () => closeBtn.style.opacity = '1';
+    closeBtn.onmouseleave = () => closeBtn.style.opacity = '0.75';
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (el && el.parentNode) el.remove();
+    };
+    el.appendChild(closeBtn);
+  }
 
   (document.documentElement || document.body).appendChild(el);
 
@@ -377,12 +413,29 @@ function isInjectionRedundant(inputField, request) {
   })();
 
   const stagedContents = getStagedFileContent(promptArea, inputField);
+  // Shadow-DOM-safe check for thumbnail-only image previews (e.g. Gemini renders <img src="blob:..."> without filename text)
+  const hasVisualAttachment = textAlreadyPresent && lastStagedFileSignatures.size > 0 && findAllElementsDeep(promptArea, el => {
+    if (el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (el === inputField || inputField.contains(el)) return false;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'img') {
+      const src = el.getAttribute('src') || '';
+      return src.startsWith('blob:') || src.startsWith('data:');
+    }
+    const label = (el.getAttribute('aria-label') || '').toLowerCase();
+    if (label.includes('remove') || label.includes('entfernen') || label.includes('delete attachment')) return true;
+    const cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+    return cls.includes('file-preview') || cls.includes('image-preview') || cls.includes('attachment-preview') || tag === 'ms-file-chip';
+  }).length > 0;
+
   const filesToInject = incomingFiles.filter(f => {
     const parts = f.name.toLowerCase().split('.');
     const ext = parts.length > 1 ? parts.pop() : '';
     const token = parts.join('.').substring(0, 12).trim();
-    if (!token) return true;
-    return !stagedContents.some(content => content.includes(token) && (ext === '' || content.includes(ext)));
+    const matchedByName = token && stagedContents.some(content => content.includes(token) && (ext === '' || content.includes(ext)));
+    if (matchedByName) return false;
+    if (hasVisualAttachment && lastStagedFileSignatures.has(getFileSignature(f))) return false;
+    return true;
   });
 
   return {
@@ -392,6 +445,8 @@ function isInjectionRedundant(inputField, request) {
   };
 }
 
+const getFileSignature = (f) => `${(f?.name || '').toLowerCase()}:${f?.type || ''}:${(f?.data || '').length}`;
+const lastStagedFileSignatures = new Set();
 const isProcessing = { current: false, startTime: null };
 let lastInjectionTime = 0; // Guard for double-firing
 let manualOverrideElement = null; // Stores user-selected element
@@ -482,6 +537,9 @@ try {
 
         // Poll for input with 5s max timeout (resolves immediately if found OR if a login mask is present)
         const inputField = await waitForElement(() => {
+          if (adapter?._strategy?.isLoggedOut?.()) {
+            return { error: "LOGIN_REQUIRED" };
+          }
           const el = adapter ? adapter.getInput() : findBestTextInput();
           if (el) return el;
 
@@ -766,6 +824,11 @@ try {
               return manualOverrideElement;
             }
 
+            // 1b. Strategy-level Auth State Guard (prevents unauthenticated reload loops)
+            if (adapter?._strategy?.isLoggedOut?.()) {
+              return { error: "LOGIN_REQUIRED" };
+            }
+
             // 2. Optimized Discovery: Prioritize direct adapter query without bypassing its throttle
             if (adapter && adapter.name !== 'Generic') {
               const el = adapter.getInput();
@@ -879,14 +942,18 @@ try {
                 // Soft-fail: Flag but do NOT abort — text injection must continue
                 filesFailed = true;
                 console.warn("LeanPrompts: File injection failed. Proceeding with text injection.");
-              } else if (!selfVerifiesFiles) {
-                // Wait for DOM to React (only for strategies without built-in MutationObserver verification)
-                await waitUntil(() => {
-                  const currentFingerprint = getEditorState(inputField.parentElement?.parentElement || inputField, strategyPromptContainer);
-                  return currentFingerprint !== initialFingerprint;
-                }, 4000);
+              } else {
+                if (!redundancy.textAlreadyPresent) lastStagedFileSignatures.clear();
+                redundancy.filesToInject.forEach(f => lastStagedFileSignatures.add(getFileSignature(f)));
+                if (!selfVerifiesFiles) {
+                  // Wait for DOM to React (only for strategies without built-in MutationObserver verification)
+                  await waitUntil(() => {
+                    const currentFingerprint = getEditorState(inputField.parentElement?.parentElement || inputField, strategyPromptContainer);
+                    return currentFingerprint !== initialFingerprint;
+                  }, 4000);
 
-                await new Promise(r => setTimeout(r, 1200));
+                  await new Promise(r => setTimeout(r, 1200));
+                }
               }
             }
           } else if (request.files && request.files.length > 0) {

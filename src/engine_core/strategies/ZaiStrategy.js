@@ -20,25 +20,52 @@
  * ============================================================================
  */
 import { AbstractBaseStrategy } from './AbstractBaseStrategy.js';
+import { findBestTextInput } from '../DOMUtils.js';
 
 /**
- * Z.ai Strategy
- * 
- * Minimal-invasive implementation for Z.ai.
- * Relies on the robust findBestTextInput() heuristic from the base class
- * to ensure we don't break on minor UI updates.
+ * Z.ai Strategy (chat.z.ai / z.ai).
+ * Fast O(1) Light-DOM input discovery + Auth-State-Guard, falling back to
+ * findBestTextInput() so minor UI changes never break injection.
  */
 export class ZaiStrategy extends AbstractBaseStrategy {
     constructor() {
         super('Z.ai', ['chat.z.ai', 'z.ai']);
     }
 
-    /**
-     * Use default behavior from AbstractBaseStrategy:
-     * 1. getInput() -> findBestTextInput()
-     * 2. injectText() -> Standard DOM manipulation + Events
-     * 
-     * This is the safest, most "zero-regression" approach for a new platform
-     * where we don't have deep specific knowledge of their DOM quirks yet.
-     */
+    getInput() {
+        // 1. Auth State Guard: Never hijack inputs behind an active login modal/form
+        const isLoggedOut = document.querySelector('input[type="password"]') ||
+            document.querySelector('form[action*="login" i], form[action*="auth" i]');
+        if (isLoggedOut) {
+            return null;
+        }
+
+        const isVisible = (el) => {
+            if (!el || !el.isConnected) return false;
+            if (el.disabled || el.readOnly || el.getAttribute('aria-disabled') === 'true') return false;
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden') return false;
+            return el.offsetWidth > 0 || el.offsetHeight > 0;
+        };
+
+        // 2. O(1) Light-DOM Fast-Path (avoids 400ms deep-scan throttle on chat.z.ai)
+        const fastSelectors = [
+            'textarea#chat-input',
+            'textarea[placeholder]',
+            'textarea',
+            'div.ProseMirror[contenteditable="true"]',
+            'div[contenteditable="true"][role="textbox"]',
+            '[contenteditable="true"]'
+        ];
+
+        for (const sel of fastSelectors) {
+            const matches = document.querySelectorAll(sel);
+            for (let i = matches.length - 1; i >= 0; i--) {
+                if (isVisible(matches[i])) return matches[i];
+            }
+        }
+
+        // 3. Heuristic fallback
+        return findBestTextInput();
+    }
 }

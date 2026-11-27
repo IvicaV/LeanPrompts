@@ -29,7 +29,7 @@ export const copyToClipboard = async (text) => {
         await navigator.clipboard.writeText(text);
         return true;
     } catch (err) {
-        console.warn("Navigator clipboard failed, falling back to textarea", err);
+        // Expected when the Dashboard/Popup loses focus to the target LLM window; fall back quietly.
         try {
             const textArea = document.createElement("textarea");
             textArea.value = text;

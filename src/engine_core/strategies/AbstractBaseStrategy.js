@@ -41,6 +41,16 @@ export class AbstractBaseStrategy {
     }
 
     /**
+     * CONTRACT: Optional hook for strategies that can detect a logged-out state even when
+     * no classic password/login modal is currently open (e.g. a visible header "Sign in" CTA
+     * alongside a dummy composer that triggers an auth reload on interaction).
+     * @returns {boolean}
+     */
+    isLoggedOut() {
+        return false;
+    }
+
+    /**
      * CONTRACT: Is this strategy responsible for the current site?
      */
     detect(url) {

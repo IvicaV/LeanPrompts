@@ -31,9 +31,59 @@ export class GenericStrategy extends AbstractBaseStrategy {
     }
 
     /**
-     * Always returns true for compatibility check if kown strategies fail.
+     * Always returns true for compatibility check if known strategies fail.
      */
     detect(url) {
+        return true;
+    }
+
+    /**
+     * Universal File Injection for Custom/Unknown LLMs:
+     * 1. Prefer an existing <input type="file"> (choosing a generic/multi-file one if multiple exist).
+     * 2. If no file input is mounted in the DOM (common in lazy-mounted React/Vue SPAs),
+     *    fall back to a native ClipboardEvent('paste') on the main text input.
+     */
+    async injectFiles(filesData) {
+        if (!filesData || filesData.length === 0) return false;
+
+        // 1. Try existing <input type="file"> (preferring generic / multiple inputs)
+        const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'))
+            .filter(el => !el.disabled);
+
+        if (fileInputs.length > 0) {
+            const bestInput =
+                fileInputs.find(el => el.multiple && (!el.accept || el.accept === '*' || el.accept === '*/*')) ||
+                fileInputs.find(el => !el.accept || el.accept === '*' || el.accept === '*/*') ||
+                fileInputs.find(el => el.multiple) ||
+                fileInputs[0];
+
+            const dt = await this._prepareDataTransfer(filesData);
+            try {
+                const proto = window.HTMLInputElement.prototype;
+                const nativeSetter = Object.getOwnPropertyDescriptor(proto, "files").set;
+                nativeSetter.call(bestInput, dt.files);
+            } catch (e) {
+                bestInput.files = dt.files;
+            }
+            bestInput.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+            bestInput.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            return true;
+        }
+
+        // 2. Fallback: ClipboardEvent('paste') on the primary composer input
+        //    (safe on unknown SPAs — unlike synthetic drag/drop, paste never leaves a stuck drop overlay)
+        const inputEl = this.getInput();
+        if (!inputEl) return false;
+
+        const dt = await this._prepareDataTransfer(filesData);
+        inputEl.focus();
+        const pasteEvent = new ClipboardEvent('paste', {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            clipboardData: dt
+        });
+        inputEl.dispatchEvent(pasteEvent);
         return true;
     }
 }

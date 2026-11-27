@@ -444,7 +444,7 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
         });
 
         // Start observer BEFORE dispatching to eliminate race conditions
-        const observerPromise = this._observeUploadOutcome(container, fileObjects, 2500);
+        const observerPromise = this._observeUploadOutcome(container, fileObjects, 4000);
 
         let dispatched = false;
         if (channel === 'paste') {
@@ -505,7 +505,11 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
             fileInput.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
             fileInput.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
 
-            document.querySelector('.cdk-overlay-backdrop')?.click();
+            // Only dismiss dropdown menus (e.g. mat-menu), NEVER dismiss real consent dialogs
+            // like AI Studio's one-time "Start creating with media in Google AI Studio" modal.
+            if (!document.querySelector('mat-dialog-container, [role="dialog"], [role="alertdialog"]')) {
+                document.querySelector('.cdk-overlay-backdrop')?.click();
+            }
             return true;
         } catch {
             return false;
@@ -516,18 +520,23 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
      * Event-driven upload verification (typically 100-350ms instead of 5.2s blind wait).
      * Watches the local prompt container for attachment chips AND .cdk-overlay-container for error snackbars.
      */
-    _observeUploadOutcome(promptContainer, fileObjects, timeoutMs = 2500) {
+    _observeUploadOutcome(promptContainer, fileObjects, timeoutMs = 4000) {
         return new Promise((resolve) => {
             const countChips = () => promptContainer.querySelectorAll(
                 'ms-file-chip, img, [class*="chip" i], [class*="attachment" i], [class*="media" i], [class*="file-preview" i], [class*="thumbnail" i]'
             ).length;
+            const countSpinners = () => promptContainer.querySelectorAll(
+                '[role="progressbar"], mat-progress-spinner, mat-spinner'
+            ).length;
 
             const initialChips = countChips();
+            const initialSpinners = countSpinners();
             const fileTokens = fileObjects
                 .map(f => f.name.toLowerCase().split('.')[0].slice(0, 10))
                 .filter(t => t.length >= 2);
 
             let settled = false;
+            let uploadStarted = false;
             const done = (res) => {
                 if (settled) return;
                 settled = true;
@@ -557,12 +566,17 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
                 if (settled) return;
 
                 const currentChips = countChips();
+                const currentSpinners = countSpinners();
                 const containerText = (promptContainer.textContent || '').toLowerCase();
                 const nameMatched = fileTokens.some(t => containerText.includes(t));
 
+                if (currentSpinners > initialSpinners) {
+                    uploadStarted = true;
+                }
+
                 if (currentChips > initialChips || nameMatched) {
-                    const hasSpinner = promptContainer.querySelector('[role="progressbar"], mat-progress-spinner, mat-spinner');
-                    if (!hasSpinner) {
+                    uploadStarted = true;
+                    if (currentSpinners === 0) {
                         setTimeout(() => done({ ok: true }), 120);
                     }
                 }
@@ -577,7 +591,15 @@ export class AIStudioStrategy extends AbstractBaseStrategy {
 
             const timer = setTimeout(() => {
                 checkSuccess();
-                if (!settled) done({ ok: false, reason: 'TIMEOUT' });
+                if (!settled) {
+                    // CRITICAL: If AI Studio already started uploading (chip or spinner appeared),
+                    // treat as success so we NEVER fall through to Channel 2 and double-upload!
+                    if (uploadStarted) {
+                        done({ ok: true });
+                    } else {
+                        done({ ok: false, reason: 'TIMEOUT' });
+                    }
+                }
             }, timeoutMs);
         });
     }
