@@ -30,7 +30,7 @@ export const DEFAULT_LLMS = [
     { id: 'grok', name: 'Grok', url: 'https://grok.com', newChatUrl: 'https://grok.com/', icon: 'sparkles' },
     { id: 'deepseek', name: 'Deepseek', url: 'https://chat.deepseek.com', newChatUrl: 'https://chat.deepseek.com/', icon: 'brain' },
     { id: 'qwen', name: 'Qwen', url: 'https://chat.qwenlm.ai', newChatUrl: 'https://chat.qwenlm.ai/', icon: 'message-square', alternativeDomains: ['chat.qwen.ai', 'tongyi.aliyun.com'] },
-    { id: 'kimi', name: 'Kimi', url: 'https://www.kimi.com', newChatUrl: 'https://www.kimi.com/chat', icon: 'moon' },
+    { id: 'kimi', name: 'Kimi', url: 'https://www.kimi.ai', newChatUrl: 'https://www.kimi.ai/chat', icon: 'moon', alternativeDomains: ['kimi.ai', 'kimi.com', 'kimi.moonshot.cn'] },
     { id: 'poe', name: 'Poe', url: 'https://poe.com', newChatUrl: 'https://poe.com/', icon: 'bot' },
     { id: 'mistral', name: 'Mistral', url: 'https://chat.mistral.ai', newChatUrl: 'https://chat.mistral.ai/chat', icon: 'wind' },
     { id: 'zai', name: 'Z.ai', url: 'https://chat.z.ai', newChatUrl: 'https://chat.z.ai', icon: 'zap' },

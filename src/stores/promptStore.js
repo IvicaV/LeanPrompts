@@ -217,6 +217,7 @@ const usePromptStore = create((set, get) => ({
 
       // Merge stored LLMs with DEFAULT_LLMS to inherit new fields (like alternativeDomains)
       // while preserving user customizations
+      let llmsMigrated = false;
       const mergedLlms = (() => {
         const storedLlms = storageData.custom_llms;
         if (!storedLlms) return DEFAULT_LLMS;
@@ -225,12 +226,31 @@ const usePromptStore = create((set, get) => ({
           // Find matching default by id to inherit new fields
           const defaultMatch = DEFAULT_LLMS.find(d => d.id === stored.id);
           if (defaultMatch) {
+            // Migrate legacy Kimi .com default URL to .ai
+            const normalizedStoredUrl = typeof stored.url === 'string' ? stored.url.replace(/\/+$/, '').toLowerCase() : '';
+            if (
+              stored.id === 'kimi' &&
+              (normalizedStoredUrl === 'https://www.kimi.com' || normalizedStoredUrl === 'https://kimi.com')
+            ) {
+              llmsMigrated = true;
+              return {
+                ...defaultMatch,
+                ...stored,
+                url: defaultMatch.url,
+                newChatUrl: defaultMatch.newChatUrl,
+                alternativeDomains: defaultMatch.alternativeDomains
+              };
+            }
             // Merge: stored values override, but inherit new fields from default
             return { ...defaultMatch, ...stored };
           }
           return stored;
         });
       })();
+
+      if (llmsMigrated && typeof chrome !== 'undefined' && chrome.storage?.local) {
+        Promise.resolve(chrome.storage.local.set({ custom_llms: mergedLlms })).catch(() => {});
+      }
 
       set({
         sortMode: initialSortMode,
