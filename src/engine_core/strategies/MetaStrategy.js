@@ -24,6 +24,7 @@
  * Isoliert, kapselt alle Meta-spezifischen Formatierungs-Logiken.
  */
 import { AbstractBaseStrategy } from './AbstractBaseStrategy.js';
+import { findBestTextInput } from '../DOMUtils.js';
 
 export class MetaStrategy extends AbstractBaseStrategy {
     constructor() {
@@ -31,24 +32,24 @@ export class MetaStrategy extends AbstractBaseStrategy {
     }
 
     getInput() {
-        // Fokus auf das primäre Eingabefeld ohne globale Heuristiken zu kompromittieren
-        return document.querySelector('textarea[aria-label*="Message"]') || 
+        return document.querySelector('textarea[aria-label*="Message" i]') ||
+               document.querySelector('textarea[aria-label*="Nachricht" i]') ||
+               document.querySelector('div[contenteditable="true"][role="textbox"]') ||
                document.querySelector('div[contenteditable="true"]') ||
-               null;
+               findBestTextInput();
     }
 
     async injectText(element, text) {
-        if (!element || !text) return false;
+        if (!text) return false;
+
+        if (!element || !element.isConnected) {
+            element = this.getInput();
+        }
+        if (!element) return false;
 
         element.focus();
-        
-        // 1. CLEAR: Sicherer Reset
-        if (element.value !== undefined) element.value = "";
-        else element.innerText = "";
 
-        // 2. PASTE-SIMULATION: Statt einzelner Zeichen senden wir das Ganze als Paste-Event.
-        // Das trickst Meta.ai aus, weil es denkt, der User hätte den Text mit STRG+V eingefügt.
-        // Das ist für React fast unmöglich zu blocken, da es ein User-Event ist.
+        // PASTE-SIMULATION: Triggers Meta AI's React paste handler cleanly
         try {
             const dataTransfer = new DataTransfer();
             dataTransfer.setData('text/plain', text);
@@ -59,22 +60,28 @@ export class MetaStrategy extends AbstractBaseStrategy {
                 composed: true,
                 clipboardData: dataTransfer
             });
-            
+
             element.dispatchEvent(pasteEvent);
 
-            // 3. Nach dem Paste-Event senden wir ein Input-Event zur Synchronisierung
             element.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 cancelable: true,
                 inputType: 'insertFromPaste',
                 data: text
             }));
-            
-            return true;
+
+            await new Promise(r => setTimeout(r, 80));
+            if (!element.isConnected) element = this.getInput() || element;
+            const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const snippet = norm(text).slice(0, 15);
+            if (snippet.length < 3 || norm(element.value ?? element.textContent).includes(snippet)) {
+                return true;
+            }
         } catch (e) {
             console.error("LeanPrompts Meta: Paste failed, falling back", e);
-            // Fallback auf die manuelle Simulation, aber diesmal langsamer
-            return await super.injectText(element, text);
         }
+
+        // Fallback to base strategy (native setter for textarea / execCommand for contenteditable)
+        return await super.injectText(element, text);
     }
 }

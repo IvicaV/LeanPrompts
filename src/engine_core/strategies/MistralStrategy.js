@@ -31,6 +31,13 @@ export class MistralStrategy extends AbstractBaseStrategy {
     }
 
     getInput() {
+        // Auth State Guard: If a login modal/form is active, do NOT hijack inputs behind it
+        const isLoggedOut = document.querySelector('input[type="password"]') ||
+            document.querySelector('form[action*="login" i], form[action*="auth" i]');
+        if (isLoggedOut) {
+            return null;
+        }
+
         return document.querySelector('.ProseMirror') ||
             document.querySelector('div.ProseMirror') ||
             document.querySelector('input#message') ||
@@ -52,13 +59,13 @@ export class MistralStrategy extends AbstractBaseStrategy {
             document.querySelector('button[aria-label*="File"]') ||
             document.querySelector('button svg path[d*="M12"]')?.closest('button') ||
             Array.from(document.querySelectorAll('button')).find(b =>
-                b.innerText?.toLowerCase().includes('attach') ||
-                b.innerText?.toLowerCase().includes('datei') ||
-                b.innerText?.toLowerCase().includes('upload'));
+                b.textContent?.toLowerCase().includes('attach') ||
+                b.textContent?.toLowerCase().includes('datei') ||
+                b.textContent?.toLowerCase().includes('upload'));
 
         if (attachBtn) {
             attachBtn.click();
-            await new Promise(r => setTimeout(r, 800));
+            await new Promise(r => setTimeout(r, 400));
         }
 
         return document.querySelector('input[type="file"]') ||
@@ -73,7 +80,7 @@ export class MistralStrategy extends AbstractBaseStrategy {
     async verifyInjection(element, text) {
         if (!element) return false;
 
-        if (!document.body.contains(element)) {
+        if (!element.isConnected) {
             element = this.getInput() || element;
         }
 
@@ -117,36 +124,48 @@ export class MistralStrategy extends AbstractBaseStrategy {
     async injectFiles(filesData) {
         if (!filesData || filesData.length === 0) return false;
 
-        // Method 1: Try drop on ProseMirror editor
+        // Method 1 (Primary): Direct <input type="file"> — avoids triggering Mistral's full-screen
+        // "Ziehen Sie hier Ihre Dateien..." drag overlay that otherwise stays stuck on screen!
+        const targetInput = await this.getFileInput();
+        if (targetInput) {
+            try {
+                const dt = await this._prepareDataTransfer(filesData);
+                const proto = window.HTMLInputElement.prototype;
+                const nativeSetter = Object.getOwnPropertyDescriptor(proto, "files").set;
+                nativeSetter.call(targetInput, dt.files);
+                targetInput.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+                targetInput.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                await new Promise(r => setTimeout(r, 300));
+                const editor = this.getInput();
+                if (editor) editor.focus();
+                return true;
+            } catch (e) {
+                // Fall through to drop fallback
+            }
+        }
+
+        // Method 2 (Fallback): Drop on ProseMirror editor + explicit dragleave/dragend cleanup
         const editor = this.getInput();
         if (editor) {
             try {
                 const dt = await this._prepareDataTransfer(filesData);
                 editor.focus();
                 const dropSuccess = this.dispatchDropSequence(editor, dt);
+                // Always dismiss any drag overlay opened by dragenter/dragover
+                const leaveOpts = { bubbles: true, cancelable: true, composed: true };
+                [editor, document.body, window].forEach(t => {
+                    try {
+                        t.dispatchEvent(new DragEvent('dragleave', leaveOpts));
+                        t.dispatchEvent(new DragEvent('dragend', leaveOpts));
+                    } catch { /* ignore */ }
+                });
                 if (dropSuccess) {
                     await new Promise(r => setTimeout(r, 500));
                     return true;
                 }
-            } catch (e) {
-                // Continue to fallback
-            }
+            } catch (e) { }
         }
 
-        // Method 2: Standard file input approach
-        const targetInput = await this.getFileInput();
-        if (!targetInput) return false;
-
-        try {
-            const dt = await this._prepareDataTransfer(filesData);
-            const proto = window.HTMLInputElement.prototype;
-            const nativeSetter = Object.getOwnPropertyDescriptor(proto, "files").set;
-            nativeSetter.call(targetInput, dt.files);
-            targetInput.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-            targetInput.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-            return true;
-        } catch (e) {
-            return false;
-        }
+        return false;
     }
 }

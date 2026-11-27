@@ -23,32 +23,83 @@ import { AbstractBaseStrategy } from './AbstractBaseStrategy.js';
 import { findBestTextInput, waitForElement, findAllElementsDeep } from '../DOMUtils.js';
 
 /**
- * Claude Strategy: ProseMirror-based editor with lazy file input.
+ * Claude Strategy: ProseMirror-based editor with hydration-safe text injection
+ * and throttled lazy file input discovery.
  */
 export class ClaudeStrategy extends AbstractBaseStrategy {
     constructor() {
         super('Claude', ['claude.ai']);
+        this._lastFileDeepScan = 0;
     }
 
     getInput() {
-        return document.querySelector('[contenteditable="true"]') || findBestTextInput();
+        const isVisible = (el) => {
+            if (!el || !el.isConnected) return false;
+            const style = window.getComputedStyle(el);
+            return style.display !== 'none' && style.visibility !== 'hidden';
+        };
+
+        const selectors = [
+            'div.ProseMirror[contenteditable="true"]',
+            '[data-testid="chat-input"][contenteditable="true"]',
+            'fieldset [contenteditable="true"]',
+            '[contenteditable="true"][role="textbox"]',
+            '[contenteditable="true"]'
+        ];
+
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (isVisible(el)) return el;
+        }
+
+        return findBestTextInput();
     }
 
     async getFileInput() {
-        // Robust Wait: Claude might lazy load the input
-        return await waitForElement(() =>
-            document.querySelector('input[type="file"]') ||
-            findAllElementsDeep(document, el => el.tagName === 'INPUT' && el.type === 'file')[0]
-            , 3000);
+        const pickBest = (inputs) => {
+            if (!inputs || inputs.length === 0) return null;
+            const isGeneric = (el) => {
+                const acc = (el.getAttribute('accept') || '').trim().toLowerCase();
+                return acc === '' || acc === '*/*' || acc.includes('*/*');
+            };
+            return inputs.find(el => isGeneric(el) && el.multiple) ||
+                inputs.find(el => isGeneric(el)) ||
+                inputs.find(el => el.multiple) ||
+                inputs[0];
+        };
+
+        return await waitForElement(() => {
+            const lightInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+            if (lightInputs.length > 0) return pickBest(lightInputs);
+
+            const now = Date.now();
+            if (now - this._lastFileDeepScan < 400) return null;
+            this._lastFileDeepScan = now;
+
+            const deepInputs = findAllElementsDeep(document, el => el.tagName === 'INPUT' && el.type === 'file');
+            return pickBest(deepInputs);
+        }, 3000);
     }
 
     async injectText(element, text) {
-        if (!element || !text) return false;
+        if (!text) return false;
+
+        if (!element || !element.isConnected) {
+            element = this.getInput();
+        }
+        if (!element) return false;
 
         // Claude / ProseMirror Focus Boost
         element.focus();
         try { element.click(); } catch (e) { }
         await new Promise(r => setTimeout(r, 150));
+
+        // Re-check connection after focus boost (hydration / post-file-upload guard)
+        if (!element.isConnected) {
+            element = this.getInput();
+            if (!element) return false;
+            element.focus();
+        }
 
         // Set selection to end
         if (element.isContentEditable || element.tagName === 'DIV') {
@@ -62,7 +113,6 @@ export class ClaudeStrategy extends AbstractBaseStrategy {
             } catch (e) { }
         }
 
-        // Use base injection
         return await super.injectText(element, text);
     }
 }

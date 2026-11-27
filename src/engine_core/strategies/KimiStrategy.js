@@ -23,11 +23,13 @@ import { AbstractBaseStrategy } from './AbstractBaseStrategy.js';
 import { findBestTextInput, waitForElement, findAllElementsDeep } from '../DOMUtils.js';
 
 /**
- * Kimi Strategy: ContentEditable editor with HTML paragraph injection.
+ * Kimi Strategy: ContentEditable editor with HTML paragraph injection
+ * and hydration-safe verification fallback.
  */
 export class KimiStrategy extends AbstractBaseStrategy {
     constructor() {
         super('Kimi', ['kimi.moonshot.cn', 'kimi.com', 'kimi.ai']);
+        this._lastFileDeepScan = 0;
     }
 
     getInput() {
@@ -37,14 +39,25 @@ export class KimiStrategy extends AbstractBaseStrategy {
     }
 
     async getFileInput() {
-        return await waitForElement(() =>
-            document.querySelector('input[type="file"]') ||
-            findAllElementsDeep(document, el => el.tagName === 'INPUT' && el.type === 'file')[0]
-            , 3000);
+        return await waitForElement(() => {
+            const direct = document.querySelector('input[type="file"]');
+            if (direct) return direct;
+
+            const now = Date.now();
+            if (now - this._lastFileDeepScan < 400) return null;
+            this._lastFileDeepScan = now;
+
+            return findAllElementsDeep(document, el => el.tagName === 'INPUT' && el.type === 'file')[0] || null;
+        }, 3000);
     }
 
     async injectText(element, text) {
-        if (!element || !text) return false;
+        if (!text) return false;
+
+        if (!element || !element.isConnected) {
+            element = this.getInput();
+        }
+        if (!element) return false;
 
         element.focus();
         await new Promise(resolve => setTimeout(resolve, 50));
@@ -70,6 +83,23 @@ export class KimiStrategy extends AbstractBaseStrategy {
 
         element.dispatchEvent(pasteEvent);
         element.dispatchEvent(new Event('input', { bubbles: true }));
-        return true;
+
+        await new Promise(r => setTimeout(r, 80));
+        if (!element.isConnected) element = this.getInput() || element;
+        const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const firstLine = text.split('\n').find(l => l.trim()) || text;
+        const snippet = norm(firstLine).slice(0, 15);
+        if (snippet.length < 3 || norm(element.value ?? element.textContent).includes(snippet)) {
+            return true;
+        }
+
+        try {
+            element.focus();
+            document.execCommand('insertText', false, text);
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+        } catch (e) { }
+
+        await new Promise(r => setTimeout(r, 60));
+        return norm(element.value ?? element.textContent).includes(snippet);
     }
 }

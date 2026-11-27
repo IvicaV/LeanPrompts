@@ -312,6 +312,8 @@ async function initializeDefaults() {
     // Initialisiere Kontextmenü nach Installation/Update
     await refreshTopPromptsMenu();
   } catch (e) {
+    // Ignore benign MV3 Service Worker teardown errors during extension reload/update
+    if (e?.message?.includes('No SW')) return;
     console.error("Initialize defaults failed:", e);
   }
 }
@@ -332,9 +334,8 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
     });
     // Sync the menu state of the active tab immediately after restoration
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        updateMenuStateForTab(tabs[0].id);
-      }
+      if (chrome.runtime.lastError || !Array.isArray(tabs) || !tabs[0]?.id) return;
+      updateMenuStateForTab(tabs[0].id);
     });
   }).catch((err) => {
     console.warn("LeanPrompts: Failed to restore volatile context map:", err);
@@ -758,6 +759,7 @@ const performInjection = async (tabId, payload) => {
         // This prevents cross-origin helper iframes (e.g. in AI Studio) from poisoning the global state.
         if (isMainFrameClosed && !isAnyBusy && closedSince && (Date.now() - closedSince > CHANNEL_CLOSED_TIMEOUT_MS)) {
           chrome.tabs.get(tabId, (tab) => {
+            if (chrome.runtime.lastError) return;
             const url = tab?.url || "Unknown URL";
             console.error(`LeanPrompts: Injection failed because script is inactive on: ${url}`);
           });
@@ -1442,6 +1444,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "OPEN_AND_INJECT") {
       const { url, text, files, forceNavigate, alternativeDomains, targetWindowId } = request;
       chrome.tabs.query({}, async (tabs) => {
+        if (chrome.runtime.lastError || !Array.isArray(tabs)) {
+          sendResponse({ success: false, error: chrome.runtime.lastError?.message || "Tab query failed" });
+          return;
+        }
         try {
           let targetDomain = "";
           try { targetDomain = new URL(url).host; } catch (e) { }
@@ -1542,7 +1548,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       targetUrl = 'https://aistudio.google.com/prompts/new_chat';
                     }
                   }
-                } else if (!check || !check.hasInput) {
+                } else if (check?.reason !== "LOGIN_REQUIRED" && (!check || !check.hasInput)) {
                   shouldResetContext = true;
                 }
               }
@@ -1599,14 +1605,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   setTimeout(() => done(null), 200);
                 });
 
-                if (currentCleanUrl === targetCleanUrl) {
-                  chrome.tabs.reload(targetTab.id);
-                } else {
-                  chrome.tabs.update(targetTab.id, { url: targetUrl, active: true });
-                }
-                
                 let isResolved = false;
                 let hasStartedLoading = false;
+                let hasUrlChanged = false;
                 let fallbackTimer;
 
                 const proceedWithInjection = async () => {
@@ -1642,16 +1643,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   if (changeInfo.status === 'loading') {
                     hasStartedLoading = true;
                   }
-                  if (changeInfo.status === 'complete' && hasStartedLoading) {
+                  if (changeInfo.url && changeInfo.url.split('?')[0].split('#')[0] !== currentCleanUrl) {
+                    hasUrlChanged = true;
+                  }
+                  if (changeInfo.status === 'complete' && (hasStartedLoading || hasUrlChanged)) {
                     proceedWithInjection();
                   }
                 };
 
+                // CRITICAL: Register listener BEFORE calling reload/update so fast 'loading' events are never missed!
                 chrome.tabs.onUpdated.addListener(listener);
 
-                // REACTIVE READINESS GUARD (Dying-Page-Safe):
+                if (currentCleanUrl === targetCleanUrl) {
+                  chrome.tabs.reload(targetTab.id);
+                } else {
+                  chrome.tabs.update(targetTab.id, { url: targetUrl, active: true });
+                }
+
+                // REACTIVE READINESS GUARD (Dying-Page-Safe & SPA-Route-Safe):
                 // Actively poll for the NEW page's content script after 1000ms.
-                // Rejects PONG responses that still carry oldInstanceId (the dying pre-navigation page).
+                // Rejects PONG responses that still carry oldInstanceId unless the SPA actually routed to a new URL.
                 (async () => {
                   const pollStart = Date.now();
                   await new Promise(r => setTimeout(r, 1000));
@@ -1665,7 +1676,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       });
                       const isAlive = !!(pingResp && (pingResp.status === "PONG" || pingResp.status === "ACK"));
                       const isNewDocument = !oldInstanceId || (pingResp?.instanceId && pingResp.instanceId !== oldInstanceId);
-                      if (isAlive && isNewDocument && !isResolved) {
+                      if (isAlive && (isNewDocument || hasUrlChanged) && !isResolved) {
                         proceedWithInjection();
                         break;
                       }

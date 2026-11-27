@@ -28,6 +28,7 @@ import { findBestTextInput, waitForElement, findAllElementsDeep } from '../DOMUt
 export class GeminiStrategy extends AbstractBaseStrategy {
     constructor() {
         super('Gemini', ['gemini.google.com']);
+        this._lastDeepScanTime = 0;
     }
 
     getInput() {
@@ -49,20 +50,24 @@ export class GeminiStrategy extends AbstractBaseStrategy {
             }
         }
 
-        // 2. Fallback to Deep Search if host is wrapped inside another shadow root
-        const deepHosts = findAllElementsDeep(document, el => el.tagName === 'RICH-TEXTAREA');
-        for (const host of deepHosts) {
-            if (host && host.shadowRoot) {
-                const inner = host.shadowRoot.querySelector('div[contenteditable="true"]') ||
-                    host.shadowRoot.querySelector('[contenteditable="true"]') ||
-                    host.shadowRoot.querySelector('[contenteditable="plaintext-only"]') ||
-                    host.shadowRoot.querySelector('[role="textbox"]') ||
-                    host.shadowRoot.querySelector('.ql-editor') ||
-                    host.shadowRoot.querySelector('p[contenteditable="true"]') ||
-                    host.shadowRoot.querySelector('textarea');
-                
-                if (inner && (inner.offsetWidth > 0 || inner.offsetHeight > 0)) {
-                    return inner;
+        // 2. Fallback to throttled Deep Search if host is wrapped inside another shadow root
+        const now = Date.now();
+        if (now - this._lastDeepScanTime >= 400) {
+            this._lastDeepScanTime = now;
+            const deepHosts = findAllElementsDeep(document, el => el.tagName === 'RICH-TEXTAREA');
+            for (const host of deepHosts) {
+                if (host && host.shadowRoot) {
+                    const inner = host.shadowRoot.querySelector('div[contenteditable="true"]') ||
+                        host.shadowRoot.querySelector('[contenteditable="true"]') ||
+                        host.shadowRoot.querySelector('[contenteditable="plaintext-only"]') ||
+                        host.shadowRoot.querySelector('[role="textbox"]') ||
+                        host.shadowRoot.querySelector('.ql-editor') ||
+                        host.shadowRoot.querySelector('p[contenteditable="true"]') ||
+                        host.shadowRoot.querySelector('textarea');
+                    
+                    if (inner && (inner.offsetWidth > 0 || inner.offsetHeight > 0)) {
+                        return inner;
+                    }
                 }
             }
         }
@@ -91,7 +96,8 @@ export class GeminiStrategy extends AbstractBaseStrategy {
     async verifyInjection(element, text) {
         if (!element) return false;
 
-        if (!document.body.contains(element)) {
+        // CRITICAL: document.body.contains() returns false for Shadow DOM nodes — always use .isConnected
+        if (!element.isConnected) {
             element = this.getInput() || element;
         }
 
@@ -138,7 +144,7 @@ export class GeminiStrategy extends AbstractBaseStrategy {
 
         if (uploadBtn) {
             uploadBtn.click();
-            await new Promise(r => setTimeout(r, 800));
+            await new Promise(r => setTimeout(r, 400));
 
             // Check again after first click
             if (checkExisting()) return checkExisting();
@@ -146,14 +152,14 @@ export class GeminiStrategy extends AbstractBaseStrategy {
             const fileBtn = await waitForElement(() =>
                 document.querySelector('button[aria-label*="Dateien hochladen"]') ||
                 document.querySelector('button[aria-label*="Upload files"]') ||
-                Array.from(document.querySelectorAll('button')).find(b => b.innerText?.includes('Dateien hochladen') || b.innerText?.includes('Upload files'))
-                , 3000);
+                Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('Dateien hochladen') || b.textContent?.includes('Upload files'))
+                , 2500);
 
             if (fileBtn) {
                 fileBtn.click();
-                await new Promise(r => setTimeout(r, 800));
+                await new Promise(r => setTimeout(r, 400));
             }
         }
-        return await waitForElement(() => checkExisting(), 3000);
+        return await waitForElement(() => checkExisting(), 2500);
     }
 }

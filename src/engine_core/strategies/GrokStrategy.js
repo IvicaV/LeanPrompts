@@ -43,19 +43,36 @@ export class GrokStrategy extends AbstractBaseStrategy {
             return null;
         }
 
-        // First: Try to find the ProseMirror editor (the REAL input)
-        const proseMirror = document.querySelector('div.tiptap.ProseMirror[contenteditable="true"]') ||
-            document.querySelector('.ProseMirror[contenteditable="true"]') ||
-            document.querySelector('div.tiptap[contenteditable="true"]');
+        const isVisible = (el) => {
+            if (!el || !el.isConnected) return false;
+            const style = window.getComputedStyle(el);
+            return style.display !== 'none' && style.visibility !== 'hidden';
+        };
 
-        if (proseMirror) {
-            return proseMirror;
+        // First: Try to find the visible ProseMirror editor (the REAL input)
+        const proseSelectors = [
+            'div.tiptap.ProseMirror[contenteditable="true"]',
+            '.ProseMirror[contenteditable="true"]',
+            'div.tiptap[contenteditable="true"]'
+        ];
+        for (const sel of proseSelectors) {
+            const el = document.querySelector(sel);
+            if (isVisible(el)) return el;
         }
 
-        // Fallback: Find and click the textarea/wrapper to activate ProseMirror
-        const textarea = document.querySelector('textarea.w-full') ||
-            document.querySelector('textarea[placeholder]') ||
-            document.querySelector('textarea');
+        // Fallback: Find and click a VISIBLE textarea/wrapper to activate ProseMirror
+        const textareaSelectors = ['textarea.w-full', 'textarea[placeholder]', 'textarea'];
+        let textarea = null;
+        for (const sel of textareaSelectors) {
+            const matches = document.querySelectorAll(sel);
+            for (const candidate of matches) {
+                if (isVisible(candidate)) {
+                    textarea = candidate;
+                    break;
+                }
+            }
+            if (textarea) break;
+        }
 
         if (textarea) {
             textarea.click();
@@ -64,15 +81,17 @@ export class GrokStrategy extends AbstractBaseStrategy {
             const activated = document.querySelector('div.tiptap.ProseMirror[contenteditable="true"]') ||
                 document.querySelector('.ProseMirror[contenteditable="true"]');
 
-            if (activated) {
+            if (isVisible(activated)) {
                 return activated;
             }
             return textarea;
         }
 
-        return document.querySelector('div[role="textbox"]') ||
-            document.querySelector('div[contenteditable="true"]') ||
-            findBestTextInput();
+        const genericEditable = document.querySelector('div[role="textbox"]') ||
+            document.querySelector('div[contenteditable="true"]');
+        if (isVisible(genericEditable)) return genericEditable;
+
+        return findBestTextInput();
     }
 
     async getFileInput() {

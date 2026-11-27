@@ -480,14 +480,27 @@ try {
       (async () => {
         const adapter = getCurrentAdapter(window.location.hostname);
 
-        // Poll for input with 5s max timeout (resolves immediately if found)
+        // Poll for input with 5s max timeout (resolves immediately if found OR if a login mask is present)
         const inputField = await waitForElement(() => {
-          return adapter ? adapter.getInput() : findBestTextInput();
+          const el = adapter ? adapter.getInput() : findBestTextInput();
+          if (el) return el;
+
+          if (document.readyState === 'complete') {
+            const isLoginMask = document.querySelector('input[type="password"]') ||
+              document.querySelector('form[action*="login" i], form[action*="signin" i], form[action*="auth" i]');
+            if (isLoginMask) {
+              return { error: "LOGIN_REQUIRED" };
+            }
+          }
+          return null;
         }, 5000);
 
+        const isLoginSentinel = !!(inputField && inputField.error === "LOGIN_REQUIRED");
+        const validInput = isLoginSentinel ? null : inputField;
+
         // Check for disabled fields if no input found
-        let reason = null;
-        if (!inputField) {
+        let reason = isLoginSentinel ? "LOGIN_REQUIRED" : null;
+        if (!validInput && !reason) {
           const disabledField = findAllElementsDeep(document, (el) => {
             const tag = el.tagName.toLowerCase();
             return (tag === 'textarea' || tag === 'input' || el.isContentEditable) && (el.disabled || el.readOnly || el.getAttribute('aria-disabled') === 'true');
@@ -496,9 +509,9 @@ try {
         }
 
         sendResponse({
-          isSupported: !!adapter || !!inputField,
-          hasInput: !!inputField,
-          name: adapter?.name || (inputField ? "Generic" : null),
+          isSupported: !!adapter || !!validInput,
+          hasInput: !!validInput,
+          name: adapter?.name || (validInput ? "Generic" : null),
           reason,
           version: "1.0.5-FIX"
         });

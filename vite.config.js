@@ -94,7 +94,8 @@ const manifest = defineManifest({
         "*://*.meta.ai/*",
         "*://tongyi.aliyun.com/*",
         "*://chat.qwenlm.ai/*",
-        "*://chat.qwen.ai/*"
+        "*://chat.qwen.ai/*",
+        "*://poe.com/*"
       ],
       js: ["src/content/main.js"],
       run_at: "document_start",

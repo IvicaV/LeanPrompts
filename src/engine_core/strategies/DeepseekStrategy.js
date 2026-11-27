@@ -55,6 +55,9 @@ export class DeepseekStrategy extends AbstractBaseStrategy {
     }
 
     async getFileInput() {
-        return await waitForElement(() => findAllElementsDeep(document, el => el.tagName === 'INPUT' && el.type === 'file')[0], 3000);
+        return await waitForElement(() =>
+            document.querySelector('input[type="file"]') ||
+            findAllElementsDeep(document, el => el.tagName === 'INPUT' && el.type === 'file')[0]
+            , 3000);
     }
 }

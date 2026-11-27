@@ -22,18 +22,29 @@
 import { AbstractBaseStrategy } from './AbstractBaseStrategy.js';
 import { findBestTextInput, waitForElement, findAllElementsDeep } from '../DOMUtils.js';
 
-const QWEN_MIME_SANITIZE_MAP = {
-    'image/webp': 'image/png',
-    'image/heic': 'image/jpeg',
-    'image/heif': 'image/jpeg',
-};
+const QWEN_CONVERT_TO_PNG_MIMES = new Set([
+    'image/webp',
+    'image/avif',
+    'image/heic',
+    'image/heif',
+]);
 
 export class QwenStrategy extends AbstractBaseStrategy {
     constructor() {
         super('Qwen', ['tongyi.aliyun.com', 'chat.qwenlm.ai', 'chat.qwen.ai']);
+        this.selfVerifiesFiles = true;
     }
 
     getInput() {
+        // Auth State Guard: If a login modal/form is active, do NOT hijack inputs behind it
+        const isLoggedOut = document.querySelector('input[type="password"]') ||
+            document.querySelector('form[action*="login" i], form[action*="auth" i]') ||
+            document.querySelector('[role="dialog"] input[type="email"], div[class*="login-modal" i] input');
+
+        if (isLoggedOut) {
+            return null;
+        }
+
         return document.querySelector('textarea#chat-input') ||
             document.querySelector('.ant-input-textarea textarea') ||
             findBestTextInput();
@@ -44,14 +55,31 @@ export class QwenStrategy extends AbstractBaseStrategy {
             findAllElementsDeep(document, el => el.tagName === 'INPUT' && el.type === 'file')[0];
     }
 
-    _sanitizeFile(fileData) {
-        const safeMime = QWEN_MIME_SANITIZE_MAP[fileData.type]
-            || fileData.type
-            || 'application/octet-stream';
+    async _sanitizeFile(fileData) {
+        const safeName = (fileData.name || `attachment_${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, '_');
+        const mime = (fileData.type || 'application/octet-stream').toLowerCase();
 
-        const safeName = fileData.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        // Truly re-encode unsupported image formats (e.g. WebP/AVIF) to real PNG bytes via Canvas.
+        // Merely relabeling the MIME type leaves WebP magic bytes intact, causing Qwen's server to reject the upload (red border)!
+        if (QWEN_CONVERT_TO_PNG_MIMES.has(mime) && fileData.data) {
+            try {
+                const res = await fetch(fileData.data);
+                const blob = await res.blob();
+                const bmp = await createImageBitmap(blob);
+                const canvas = document.createElement('canvas');
+                canvas.width = bmp.width;
+                canvas.height = bmp.height;
+                canvas.getContext('2d').drawImage(bmp, 0, 0);
+                bmp.close?.();
+                const pngDataUrl = canvas.toDataURL('image/png');
+                const pngName = safeName.replace(/\.[^.]+$/, '') + '.png';
+                return { ...fileData, type: 'image/png', name: pngName, data: pngDataUrl };
+            } catch (e) {
+                // Fall back to original file untouched if browser cannot decode bitmap (e.g. HEIC)
+            }
+        }
 
-        return { ...fileData, type: safeMime, name: safeName };
+        return { ...fileData, type: mime, name: safeName };
     }
 
     async injectFiles(filesData) {
@@ -65,7 +93,7 @@ export class QwenStrategy extends AbstractBaseStrategy {
             return false;
         }
 
-        const safeFiles = filesData.map(f => this._sanitizeFile(f));
+        const safeFiles = await Promise.all(filesData.map(f => this._sanitizeFile(f)));
 
         try {
             console.log('LeanPrompts [Qwen] Triggering Main World drop injection via background script...');
@@ -114,7 +142,7 @@ export class QwenStrategy extends AbstractBaseStrategy {
             );
 
             for (const el of allElements) {
-                const elText = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').toLowerCase();
+                const elText = (el.textContent || el.getAttribute('aria-label') || '').toLowerCase();
                 const elTitle = (el.getAttribute('title') || el.getAttribute('data-name') || '').toLowerCase();
 
                 for (const name of fileNames) {
@@ -142,7 +170,7 @@ export class QwenStrategy extends AbstractBaseStrategy {
             for (const selector of genericSelectors) {
                 const el = document.querySelector(selector);
                 if (el) {
-                    const text = (el.innerText || el.textContent || '').trim();
+                    const text = (el.textContent || '').trim();
                     if (text && text.length > 1 && !text.match(/^[+×✕✗\-]$/)) {
                         console.log(`LeanPrompts [Qwen] ✓ Found generic upload indicator [${selector}]: "${text}"`);
                         return true;
@@ -168,7 +196,7 @@ export class QwenStrategy extends AbstractBaseStrategy {
             await this._delay(300);
         }
 
-        console.warn('LeanPrompts [Qwen] Validation timeout - no upload indicator found after 6s');
+        console.log('LeanPrompts [Qwen] Validation timeout - no upload indicator found after 6s');
         return false;
     }
 
